@@ -1,10 +1,28 @@
-import React, { useState } from "react";
+import React, { useState, useEffect } from 'react';
 import { Chess } from 'chess.js';
+import socket from '../socket';
+
+const chess = new Chess();
 
 const ChessBoard = () => {
-    const [chess] = useState(new Chess());
     const [selectedSquare, setSelectedSquare] = useState(null);
     const [board, setBoard] = useState(chess.board());
+
+    useEffect(() => {
+        socket.on('connect', () => {
+            console.log('Connected to server:', socket.id);
+        });
+    
+        socket.on('opponent-move', (move) => {
+            chess.move(move);
+            setBoard(chess.board());
+        });
+    
+        return () => {
+            socket.off('connect');
+            socket.off('opponent-move');
+        };
+    }, []);
 
     const getPieceSymbol = (piece) => {
         if (!piece) return '';
@@ -42,9 +60,11 @@ const ChessBoard = () => {
                     to: square,
                     promotion: 'q'
                 };
-                
+    
                 const result = chess.move(move);
+    
                 if (result) {
+                    socket.emit('move', result); // ✅ Only emit if valid move
                     setBoard(chess.board());
                     setSelectedSquare(null);
                 } else {
