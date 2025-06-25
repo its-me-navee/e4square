@@ -35,9 +35,11 @@ const ChessBoard = () => {
   
   const updateConfig = () => {
     const chess = chessRef.current;
+    const checkColor = chess.inCheck() ? chess.turn() : false;
     setConfig({
       fen: chess.fen(),
       turnColor: chess.turn() === 'w' ? 'white' : 'black',
+      check: checkColor,
       movable: {
         color: chess.turn() === 'w' ? 'white' : 'black',
         dests: getDests(chess),
@@ -66,6 +68,7 @@ const ChessBoard = () => {
         lastMove: true,
         check: true,
       },
+      check: checkColor === 'w' ? 'white' : checkColor === 'b' ? 'black' : false,
       animation: {
         enabled: true,
         duration: 150,
