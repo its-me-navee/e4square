@@ -11,6 +11,10 @@ import socket from '../socket';
 const ChessBoard = () => {
   const chessRef = useRef(new Chess());
   const [config, setConfig] = useState({});
+  const settings = JSON.parse(localStorage.getItem('e4square-settings')) || {
+    premove: 'single',
+    autoQueen: true,
+  };
 
   const getAllSquares = () => {
     const squares = [];
@@ -39,7 +43,6 @@ const ChessBoard = () => {
     setConfig({
       fen: chess.fen(),
       turnColor: chess.turn() === 'w' ? 'white' : 'black',
-      check: checkColor,
       movable: {
         color: chess.turn() === 'w' ? 'white' : 'black',
         dests: getDests(chess),
@@ -47,8 +50,16 @@ const ChessBoard = () => {
         free: false,
         events: {
           after: (from, to) => {
+            const piece = chess.get(from);
+            let promotionPiece = undefined;
+            if (
+              piece?.type === 'p' &&
+              ((piece.color === 'w' && to[1] === '8') || (piece.color === 'b' && to[1] === '1'))
+            ) {
+              promotionPiece = settings.autoQueen ? 'q' : prompt("Promote to? (q/r/b/n)", "q");
+            }
             try {
-                const move = chess.move({ from, to, promotion: 'q' });
+                const move = chess.move({ from, to, promotion: promotionPiece });
                 if (move) {
                   updateConfig();
                   socket.emit('move', move);
@@ -63,6 +74,11 @@ const ChessBoard = () => {
       draggable: {
         enabled: true,
         deleteOnDropOff: false,
+      },
+      premovable: {
+        enabled: settings.premove !== 'none',
+        castle: true,
+        showDests: true
       },
       highlight: {
         lastMove: true,
