@@ -8,6 +8,9 @@ import 'chessground/assets/chessground.cburnett.css';
 
 import socket from '../socket';
 
+import Header from '../components/Header'; // adjust path as needed
+
+
 const ChessBoard = () => {
   const chessRef = useRef(new Chess());
   const [config, setConfig] = useState({});
@@ -112,6 +115,8 @@ const ChessBoard = () => {
   }, []);
 
   return (
+    <div style={{ background: '#262421', minHeight: '100vh' }}>
+    <Header />
     <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', background: '#262421', minHeight: '100vh', padding: '20px' }}>
       <h2 style={{ color: 'white', marginBottom: '20px' }}>E4Square - Chessground</h2>
       <Chessground
@@ -120,6 +125,7 @@ const ChessBoard = () => {
         config={config}
         contained={false}
       />
+    </div>
     </div>
   );
 };
