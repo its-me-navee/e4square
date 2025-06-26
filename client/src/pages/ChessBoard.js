@@ -14,6 +14,7 @@ import Header from '../components/Header'; // adjust path as needed
 const ChessBoard = () => {
   const chessRef = useRef(new Chess());
   const [config, setConfig] = useState({});
+  const [gameStatus, setGameStatus] = useState('');
   const settings = JSON.parse(localStorage.getItem('e4square-settings')) || {
     premove: 'single',
     autoQueen: true,
@@ -65,6 +66,7 @@ const ChessBoard = () => {
                 const move = chess.move({ from, to, promotion: promotionPiece });
                 if (move) {
                   updateConfig();
+                  evaluateGameStatus();
                   socket.emit('move', move);
                 }
             }
@@ -95,6 +97,27 @@ const ChessBoard = () => {
     });
   };
 
+  const evaluateGameStatus = () => {
+    const chess = chessRef.current;
+  
+    if (chess.isGameOver()) {
+      if (chess.isCheckmate()) {
+        const winner = chess.turn() === 'w' ? 'Black' : 'White'; // the other player just won
+        setGameStatus(`${winner} won by checkmate`);
+      } else if (chess.isStalemate()) {
+        setGameStatus('Draw by stalemate');
+      } else if (chess.isThreefoldRepetition()) {
+        setGameStatus('Draw by threefold repetition');
+      } else if (chess.isInsufficientMaterial()) {
+        setGameStatus('Draw due to insufficient material');
+      } else if (chess.isDraw()) {
+        setGameStatus('Draw');
+      }
+    } else {
+      setGameStatus('');
+    }
+  };
+
   useEffect(() => {
     const token = localStorage.getItem('authToken');
     if (!token) {
@@ -111,6 +134,7 @@ const ChessBoard = () => {
     socket.on('opponent-move', (move) => {
       chess.move(move);
       updateConfig();
+      evaluateGameStatus();
     });
 
     return () => {
@@ -120,10 +144,16 @@ const ChessBoard = () => {
   }, []);
 
   return (
-    <div style={{ background: '#262421', minHeight: '100vh' }}>
-    <Header />
+
     <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', background: '#262421', minHeight: '100vh', padding: '20px' }}>
       <h2 style={{ color: 'white', marginBottom: '20px' }}>E4Square - Chessground</h2>
+
+      {gameStatus && (
+        <div style={{ color: 'lightgreen', marginBottom: '20px', fontSize: '18px' }}>
+          {gameStatus}
+        </div>
+      )}
+
       <Chessground
         width={520}
         height={520}
@@ -131,7 +161,7 @@ const ChessBoard = () => {
         contained={false}
       />
     </div>
-    </div>
+
   );
 };
 
