@@ -96,6 +96,11 @@ const ChessBoard = () => {
   };
 
   useEffect(() => {
+    const token = localStorage.getItem('authToken');
+    if (!token) {
+      window.location.href = '/login'; // 👈 redirect to login if not authenticated
+      return;
+    }
     const chess = chessRef.current;
     updateConfig();
 
