@@ -2,6 +2,7 @@ import React, { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { v4 as uuidv4 } from 'uuid';
 import { auth } from '../firebase';
+import { onAuthStateChanged } from 'firebase/auth';
 import socket from '../socket';
 
 const Home = () => {
@@ -9,13 +10,26 @@ const Home = () => {
   const [activePlayers, setActivePlayers] = useState([]);
   const [pendingInvitation, setPendingInvitation] = useState(null);
   const [isConnected, setIsConnected] = useState(false);
+  const [isLoading, setIsLoading] = useState(true);
   const navigate = useNavigate();
 
   useEffect(() => {
-    const user = auth.currentUser;
-    if (user) {
-      setUserEmail(user.email);
-    }
+    // Check authentication status
+    const unsubscribe = onAuthStateChanged(auth, (user) => {
+      if (user) {
+        setUserEmail(user.email);
+        setIsLoading(false);
+      } else {
+        // User is not authenticated, redirect to login
+        navigate('/login');
+      }
+    });
+
+    return () => unsubscribe();
+  }, [navigate]);
+
+  useEffect(() => {
+    if (!userEmail) return; // Don't set up socket if user is not authenticated
 
     // Socket event handlers
     const handleConnect = () => {
@@ -83,6 +97,28 @@ const Home = () => {
     
     setPendingInvitation(null);
   };
+
+  const createNewGame = () => {
+    const gameId = uuidv4();
+    navigate(`/game/${gameId}`);
+  };
+
+  // Show loading while checking authentication
+  if (isLoading) {
+    return (
+      <div style={{ 
+        minHeight: '100vh', 
+        background: 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)',
+        display: 'flex',
+        alignItems: 'center',
+        justifyContent: 'center'
+      }}>
+        <div style={{ color: 'white', fontSize: '18px' }}>
+          Loading...
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div style={{ 
@@ -204,10 +240,7 @@ const Home = () => {
             Create a new game and share the link with a friend
           </p>
           <button
-            onClick={() => {
-              const gameId = uuidv4();
-              navigate(`/game/${gameId}`);
-            }}
+            onClick={createNewGame}
             style={{
               background: 'linear-gradient(45deg, #2196F3, #1976D2)',
               color: 'white',
