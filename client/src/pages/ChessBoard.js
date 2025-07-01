@@ -55,10 +55,16 @@ const ChessBoard = () => {
     const currentTurn = chess.turn() === 'w' ? 'white' : 'black';
     const isPlayersTurn = playerSide === currentTurn;
 
+    const history = chess.history({ verbose: true });
+    const lastMoveObj = history.length > 0 ? history[history.length - 1] : null;
+    const lastMove = lastMoveObj ? [lastMoveObj.from, lastMoveObj.to] : [];
+
+
     setConfig({
       fen: chess.fen(),
       turnColor: currentTurn,
       orientation: playerSide || 'white',
+      lastMove, 
       movable: {
         color: isPlayersTurn && gameStarted ? playerSide : null,
         dests: isPlayersTurn && gameStarted ? getDests(chess) : new Map(),
