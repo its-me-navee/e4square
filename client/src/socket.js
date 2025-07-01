@@ -10,11 +10,20 @@ const socket = io('http://localhost:5000', {
 // Listen for Firebase login
 onAuthStateChanged(auth, async (user) => {
   if (user) {
-    const token = await user.getIdToken();
-    socket.auth = { token };
-    socket.connect();
+    try {
+      const token = await user.getIdToken();
+      socket.auth = { token };
+      if (!socket.connected) {
+        socket.connect();
+      }
+    } catch (error) {
+      console.error('Failed to get auth token:', error);
+    }
   } else {
-    console.warn("User not logged in, socket not connected.");
+    if (socket.connected) {
+      socket.disconnect();
+    }
+    console.warn("User not logged in, socket disconnected.");
   }
 });
 
