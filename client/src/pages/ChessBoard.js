@@ -23,6 +23,46 @@ const ChessBoard = () => {
   const [isConnected, setIsConnected] = useState(false);
   const [gameStarted, setGameStarted] = useState(false);
   const [isLoading, setIsLoading] = useState(true);
+  const [moveHistory, setMoveHistory] = useState([]);
+  const [currentMoveIndex, setCurrentMoveIndex] = useState(null); // null means "live board"
+
+  const goBack = () => {
+    if (currentMoveIndex > 0) {
+      const prev = moveHistory[currentMoveIndex - 1];
+      console.log("⬅️ Go back to:", prev);
+      chessRef.current.load(prev.fen);
+      setCurrentMoveIndex(currentMoveIndex - 1);
+      updateConfig();
+    }
+  };
+  
+  const goForward = () => {
+    if (currentMoveIndex < moveHistory.length - 1) {
+      const next = moveHistory[currentMoveIndex + 1];
+      console.log("➡️ Go forward to:", next);
+      chessRef.current.load(next.fen);
+      setCurrentMoveIndex(currentMoveIndex + 1);
+      updateConfig();
+    } else {
+      // Return to live game state
+      chessRef.current.load(chessRef.current.fen());
+      console.log("🏁 Returning to live board");
+      setCurrentMoveIndex(null);
+      updateConfig();
+    }
+  };
+
+  const groupedMoves = () => {
+    const grouped = [];
+    for (let i = 0; i < moveHistory.length; i += 2) {
+      const whiteMove = moveHistory[i]?.move.san || '';
+      const blackMove = moveHistory[i + 1]?.move.san || '';
+      grouped.push({ moveNo: i / 2 + 1, whiteMove, blackMove });
+    }
+    return grouped;
+  };
+  
+
   const settings = JSON.parse(localStorage.getItem('e4square-settings')) || {
     premove: 'single',
     autoQueen: true,
@@ -89,6 +129,12 @@ const ChessBoard = () => {
               const move = chess.move({ from, to, promotion: promotionPiece });
               if (move) {
                 console.log(`✅ Move successful: ${move.from} -> ${move.to}`);
+                const newMove = {
+                  move,
+                  fen: chess.fen()
+                };
+                setMoveHistory((prev) => [...prev, newMove]);
+                setCurrentMoveIndex(null);
                 updateConfig();
                 evaluateGameStatus();
                 socket.emit('move', { move, gameId });
@@ -157,6 +203,11 @@ const ChessBoard = () => {
   }, [navigate]);
 
   useEffect(() => {
+    console.log('📚 moveHistory updated:', moveHistory);
+  }, [moveHistory]);
+  
+
+  useEffect(() => {
     if (isLoading) return; // Don't set up game if still loading auth
 
     const chess = chessRef.current;
@@ -174,8 +225,15 @@ const ChessBoard = () => {
     const handleOpponentMove = (data) => {
       console.log('📥 Received opponent move:', data);
       try {
-        if (data.move) {
-          chess.move(data.move);
+        const result = chess.move(data.move);
+        if (result) {
+          const newMove = {
+            move: result,
+            fen: chess.fen(),
+          };
+    
+          setMoveHistory((prev) => [...prev, newMove]);
+          setCurrentMoveIndex(null);
           updateConfig();
           evaluateGameStatus();
         }
@@ -266,7 +324,10 @@ const ChessBoard = () => {
       
       const chess = chessRef.current;
       chess.load(data.fen);
-      
+      if (Array.isArray(data.moves)) {
+        setMoveHistory(data.moves);      // <-- then update history
+        setCurrentMoveIndex(null);
+      }
       // Ensure game is marked as started when we receive game state
       setGameStarted(true);
       
@@ -420,6 +481,71 @@ const ChessBoard = () => {
             {gameStatus}
           </div>
         )}
+        
+        {/* Move History Sidebar */}
+        <div style={{ 
+          display: 'flex', 
+          gap: '20px', 
+          justifyContent: 'center', 
+          alignItems: 'flex-start' 
+        }}>
+          <div style={{ 
+            maxHeight: '500px', 
+            overflowY: 'auto', 
+            color: 'white', 
+            fontSize: '14px', 
+            padding: '10px', 
+            background: '#1e1e1e', 
+            borderRadius: '8px',
+            minWidth: '150px'
+          }}>
+            <h4 style={{ marginTop: 0 }}>Move History</h4>
+            <table style={{ width: '100%', borderCollapse: 'collapse' }}>
+              <thead>
+                <tr style={{ color: '#FFD700' }}>
+                  <th style={{ textAlign: 'left' }}>#</th>
+                  <th style={{ textAlign: 'left' }}>{playerSide === 'white' ? 'You' : opponentName || 'White'}</th>
+                  <th style={{ textAlign: 'left' }}>{playerSide === 'black' ? 'You' : opponentName || 'Black'}</th>
+                </tr>
+              </thead>
+              <tbody>
+                {groupedMoves().map((row, index) => (
+                  <tr key={index}>
+                    <td>{row.moveNo}</td>
+                    <td
+                      style={{
+                        cursor: 'pointer',
+                        color: currentMoveIndex === index * 2 ? '#FFD700' : 'white',
+                      }}
+                      onClick={() => {
+                        chessRef.current.load(moveHistory[index * 2]?.fen);
+                        setCurrentMoveIndex(index * 2);
+                        updateConfig();
+                      }}
+                    >
+                      {row.whiteMove}
+                    </td>
+                    <td
+                      style={{
+                        cursor: 'pointer',
+                        color: currentMoveIndex === index * 2 + 1 ? '#FFD700' : 'white',
+                      }}
+                      onClick={() => {
+                        chessRef.current.load(moveHistory[index * 2 + 1]?.fen);
+                        setCurrentMoveIndex(index * 2 + 1);
+                        updateConfig();
+                      }}
+                    >
+                      {row.blackMove}
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+
+            {moveHistory.length === 0 && <p>No moves yet</p>}
+          </div>
+
 
         <Chessground
           width={520}
@@ -427,6 +553,29 @@ const ChessBoard = () => {
           config={config}
           contained={false}
         />
+        <div style={{ display: 'flex', justifyContent: 'center', marginTop: '10px' }}>
+          <button onClick={goBack} disabled={currentMoveIndex === null || currentMoveIndex <= 0}>
+            ◀ Prev
+          </button>
+          <button onClick={goForward} disabled={currentMoveIndex === null || currentMoveIndex >= moveHistory.length - 1}>
+            Next ▶
+          </button>
+          <button
+            onClick={() => {
+              const latest = moveHistory[moveHistory.length - 1];
+              if (latest) {
+                chessRef.current.load(latest.fen);
+                setCurrentMoveIndex(moveHistory.length - 1);
+                updateConfig();
+              }
+            }}
+            disabled={currentMoveIndex === null}
+          >
+            🔄 Live
+          </button>
+        </div>
+      </div>
+
 
         {/* Back to Home Button */}
         <button
