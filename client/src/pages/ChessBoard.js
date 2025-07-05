@@ -25,6 +25,37 @@ const ChessBoard = () => {
   const [isLoading, setIsLoading] = useState(true);
   const [moveHistory, setMoveHistory] = useState([]);
   const [currentMoveIndex, setCurrentMoveIndex] = useState(null); // null means "live board"
+  const [boardSize, setBoardSize] = useState(getInitialBoardSize());
+
+  function getInitialBoardSize() {
+    const screenWidth = window.innerWidth;
+    if (screenWidth < 400) return 300;
+    if (screenWidth < 768) return 400;
+    return 520;
+  }
+
+  useEffect(() => {
+    const handleResize = () => {
+      const newWidth = window.innerWidth;
+      if (newWidth < 400) {
+        setBoardSize(300);
+      } else if (newWidth < 768) {
+        setBoardSize(400);
+      } else {
+        setBoardSize(520);
+      }
+    };
+
+    // Listen for resize
+    window.addEventListener('resize', handleResize);
+
+    // Run once in case it mounted on a small screen
+    handleResize();
+
+    // Cleanup
+    return () => window.removeEventListener('resize', handleResize);
+  }, []);
+
 
   const goBack = () => {
     if (currentMoveIndex > 0) {
@@ -35,7 +66,12 @@ const ChessBoard = () => {
       updateConfig();
     }
   };
-  
+  const getBoardSize = () => {
+    const screenWidth = window.innerWidth;
+    if (screenWidth < 500) return 300;
+    if (screenWidth < 768) return 400;
+    return 520;
+  };
   const goForward = () => {
     if (currentMoveIndex < moveHistory.length - 1) {
       const next = moveHistory[currentMoveIndex + 1];
@@ -485,9 +521,11 @@ const ChessBoard = () => {
         {/* Move History Sidebar */}
         <div style={{ 
           display: 'flex', 
+          flexDirection: window.innerWidth < 768 ? 'column' : 'row',
           gap: '20px', 
-          justifyContent: 'center', 
-          alignItems: 'flex-start' 
+          justifyContent: 'center',
+          alignItems: 'center',
+          flexWrap: 'wrap',
         }}>
           <div style={{ 
             maxHeight: '500px', 
@@ -548,8 +586,8 @@ const ChessBoard = () => {
 
 
         <Chessground
-          width={520}
-          height={520}
+          width={boardSize}
+          height={boardSize}
           config={config}
           contained={false}
         />
