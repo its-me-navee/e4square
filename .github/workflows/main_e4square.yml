@@ -39,11 +39,11 @@ jobs:
       # 🪄 Flatten into deploy folder
       - name: Prepare deploy folder
         run: |
-          mkdir deploy
+          mkdir -p deploy/client
           cp -r server/* deploy/
           cp -r client/build deploy/client/build
           cp server/package.json deploy/
-          cp server/package-lock.json deploy/ || true  # ignore if doesn't exist
+          cp server/package-lock.json deploy/ || true
 
       - name: Zip deploy folder
         run: cd deploy && zip -r ../release.zip . && cd ..
