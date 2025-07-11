@@ -21,8 +21,8 @@ jobs:
         with:
           node-version: '20.x'
 
-      # Install and build client
-      - name: Install and build frontend
+      # Install and build frontend
+      - name: Install and build client
         run: |
           cd client
           npm install
@@ -30,23 +30,24 @@ jobs:
           cd ..
 
       # Install backend dependencies
-      - name: Install backend
+      - name: Install backend (server) dependencies
         run: |
           cd server
           npm install
           cd ..
 
-      # 🪄 Flatten into deploy folder
-      - name: Prepare deploy folder
+      # Copy built frontend into server folder
+      - name: Move build to server
         run: |
-          mkdir -p deploy/client
-          cp -r server/* deploy/
-          cp -r client/build deploy/client/build
-          cp server/package.json deploy/
-          cp server/package-lock.json deploy/ || true
+          rm -rf server/client-build
+          cp -r client/build server/client-build
 
-      - name: Zip deploy folder
-        run: cd deploy && zip -r ../release.zip . && cd ..
+      # Zip the server folder (now contains client-build inside)
+      - name: Zip server folder for deployment
+        run: |
+          cd server
+          zip -r ../release.zip . -x "node_modules/*"
+          cd ..
 
       - name: Upload artifact
         uses: actions/upload-artifact@v4
@@ -62,7 +63,7 @@ jobs:
       contents: read
 
     steps:
-      - name: Download artifact
+      - name: Download build artifact
         uses: actions/download-artifact@v4
         with:
           name: fullstack-app
@@ -82,4 +83,4 @@ jobs:
         with:
           app-name: 'e4square'
           slot-name: 'Production'
-          package: .
+          package: release.zip
