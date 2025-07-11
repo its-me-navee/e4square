@@ -30,15 +30,23 @@ jobs:
           cd ..
 
       # Install backend dependencies
-      - name: Install backend dependencies
+      - name: Install backend
         run: |
           cd server
           npm install
           cd ..
 
-      # Zip full project for Azure deploy
-      - name: Zip full project
-        run: zip -r release.zip . -x ".git/*" "node_modules/*" "client/node_modules/*" "server/node_modules/*"
+      # 🪄 Flatten into deploy folder
+      - name: Prepare deploy folder
+        run: |
+          mkdir deploy
+          cp -r server/* deploy/
+          cp -r client/build deploy/client/build
+          cp server/package.json deploy/
+          cp server/package-lock.json deploy/ || true  # ignore if doesn't exist
+
+      - name: Zip deploy folder
+        run: cd deploy && zip -r ../release.zip . && cd ..
 
       - name: Upload artifact
         uses: actions/upload-artifact@v4
@@ -54,7 +62,7 @@ jobs:
       contents: read
 
     steps:
-      - name: Download build artifact
+      - name: Download artifact
         uses: actions/download-artifact@v4
         with:
           name: fullstack-app
