@@ -24,6 +24,27 @@ app.get('/', (req, res) => {
   res.sendFile(path.join(__dirname, 'client-build', 'index.html'));
 });
 
+// Health check endpoint for Azure
+app.get('/health', (req, res) => {
+  res.json({ 
+    status: 'healthy', 
+    timestamp: new Date().toISOString(),
+    uptime: process.uptime(),
+    memory: process.memoryUsage()
+  });
+});
+
+// API status endpoint
+app.get('/api/status', (req, res) => {
+  res.json({ 
+    message: 'E4Square Chess Server',
+    version: '1.0.0',
+    activeGames: Object.keys(games).length,
+    activePlayers: activePlayers.size,
+    environment: process.env.NODE_ENV || 'development'
+  });
+});
+
 const server = http.createServer(app);
 const io = new Server(server, {
   cors: {origin: "*"}
