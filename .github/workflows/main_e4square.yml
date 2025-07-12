@@ -13,40 +13,43 @@ jobs:
       contents: read
 
     steps:
-      - uses: actions/checkout@v4
+      - name: Checkout repository
+        uses: actions/checkout@v4
 
       - name: Set up Node.js version
         uses: actions/setup-node@v3
         with:
           node-version: '20.x'
 
-      # Step 1: Install and build React frontend
-      - name: Install client dependencies
+      # Step 1: Install client dependencies
+      - name: Install React client dependencies
         working-directory: ./client
         run: npm install
 
+      # Step 2: Build React app with CI='' to avoid build failures on warnings
       - name: Build React app
         working-directory: ./client
-        run: npm run build
+        run: |
+          CI='' npm run build
 
-      # Step 2: Move React build to root/client-build
-      - name: Move React build to client-build folder at root
+      # Step 3: Move React build output to root-level client-build folder
+      - name: Move frontend build to root/client-build
         run: |
           rm -rf client-build
           cp -r client/build ./client-build
 
-      # Step 3: Move backend server files to root
-      - name: Move backend server.js and package.json to root
+      # Step 4: Move server.js and package.json to root
+      - name: Move backend files to root
         run: |
           cp server/server.js .
           cp server/package.json .
-          cp server/package-lock.json . || echo "no lock file found"
+          cp server/package-lock.json . || echo "No lock file found"
 
-      # Step 4: Install backend dependencies
+      # Step 5: Install backend dependencies
       - name: Install backend dependencies
         run: npm install
 
-      # Step 5: Zip everything
+      # Step 6: Zip artifact for deployment (excluding source dirs)
       - name: Zip artifact for deployment
         run: zip release.zip ./* -r -x "client/*" "server/*" ".github/*" "node_modules/*"
 
@@ -59,7 +62,7 @@ jobs:
   deploy:
     runs-on: ubuntu-latest
     needs: build
-    
+
     permissions:
       id-token: write
       contents: read
