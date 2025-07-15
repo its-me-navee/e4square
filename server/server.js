@@ -430,7 +430,7 @@ function broadcastActivePlayers() {
 }
 
 app.get('*', (req, res) => {
-  res.json({ message: 'E4Square Chess Server' });
+  res.sendFile(path.join(__dirname, 'client-build', 'index.html'));
 });
 
 const PORT = process.env.PORT || 5000;
