@@ -1,4 +1,4 @@
-// require('dotenv').config();
+require('dotenv').config();
 const express = require('express');
 const http = require('http');
 const { Server } = require('socket.io');
@@ -7,13 +7,13 @@ const cors = require('cors');
 const admin = require('firebase-admin');
 const path = require('path');
 
-admin.initializeApp({
-  credential: admin.credential.cert({
-    projectId: process.env.FIREBASE_PROJECT_ID,
-    clientEmail: process.env.FIREBASE_CLIENT_EMAIL,
-    privateKey: process.env.FIREBASE_PRIVATE_KEY?.replace(/\\n/g, '\n'),
-  }),
-});
+// admin.initializeApp({
+//   credential: admin.credential.cert({
+//     projectId: process.env.FIREBASE_PROJECT_ID,
+//     clientEmail: process.env.FIREBASE_CLIENT_EMAIL,
+//     privateKey: process.env.FIREBASE_PRIVATE_KEY?.replace(/\\n/g, '\n'),
+//   }),
+// });
 const app = express();
 app.use(cors());
 app.use(express.json());
@@ -58,17 +58,20 @@ const playerSockets = new Map(); // email => socketId
 
 // 🔐 Socket.IO Auth Middleware
 io.use(async (socket, next) => {
-  const token = socket.handshake.auth.token;
-  if (!token) return next(new Error('Missing token'));
-  try {
-    const decoded = await admin.auth().verifyIdToken(token);
-    socket.user = decoded;
-    console.log('✅ Authenticated user:', decoded.email);
-    next();
-  } catch (err) {
-    console.error('❌ Auth error:', err.message);
-    next(new Error('Unauthorized'));
-  }
+  // const token = socket.handshake.auth.token;
+  // if (!token) return next(new Error('Missing token'));
+  // try {
+    // const decoded = await admin.auth().verifyIdToken(token);
+  //   socket.user = decoded;
+  //   console.log('✅ Authenticated user:', decoded.email);
+  //   next();
+  // } catch (err) {
+  //   console.error('❌ Auth error:', err.message);
+  //   next(new Error('Unauthorized'));
+  // }
+  socket.user = { email: `guest_${socket.id}@e4square.test` };
+  console.log('🔓 Skipped auth, mocked user:', socket.user.email);
+  next();
 });
 
 io.on('connection', (socket) => {
