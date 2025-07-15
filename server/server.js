@@ -20,9 +20,6 @@ app.use(express.json());
 
 app.use(express.static(path.join(__dirname, 'client-build')));
 
-app.get('/', (req, res) => {
-  res.sendFile(path.join(__dirname, 'client-build', 'index.html'));
-});
 
 // Health check endpoint for Azure
 app.get('/health', (req, res) => {
@@ -434,6 +431,8 @@ app.get('*', (req, res) => {
 });
 
 const PORT = process.env.PORT || 5000;
+console.log("Static files served from:", path.join(__dirname, 'client-build'));
+
 server.listen(PORT, () => {
   console.log(`Server is running on ${PORT}`);
 });
