@@ -20,6 +20,9 @@ app.use(express.json());
 
 app.use(express.static(path.join(__dirname, 'client-build')));
 
+app.get('/', (req, res) => {
+  res.sendFile(path.join(__dirname, 'client-build', 'index.html'));
+});
 
 // Health check endpoint for Azure
 app.get('/health', (req, res) => {
@@ -426,8 +429,8 @@ function broadcastActivePlayers() {
   io.emit('active-players', playersList);
 }
 
-app.get('*', (req, res) => {
-  res.sendFile(path.join(__dirname, 'client-build', 'index.html'));
+app.get('/', (req, res) => {
+  res.json({ message: 'E4Square Chess Server' });
 });
 
 const PORT = process.env.PORT || 5000;
