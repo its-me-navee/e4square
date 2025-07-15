@@ -420,7 +420,7 @@ io.on('connection', (socket) => {
   });
 });
 
-// Helper function to broadcast active players list
+
 function broadcastActivePlayers() {
   const playersList = Array.from(activePlayers.values());
   io.emit('active-players', playersList);
