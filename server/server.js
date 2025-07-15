@@ -429,7 +429,7 @@ function broadcastActivePlayers() {
   io.emit('active-players', playersList);
 }
 
-app.get('/', (req, res) => {
+app.get('*', (req, res) => {
   res.json({ message: 'E4Square Chess Server' });
 });
 
