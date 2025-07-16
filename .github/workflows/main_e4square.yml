@@ -48,8 +48,10 @@ jobs:
           cp server/package-lock.json . || echo "No lock file found"
 
       # Step 5: Install backend dependencies
-      - name: Install backend dependencies
-        run: npm ci
+      - name: Clean and install backend dependencies
+        run: |
+          rm -rf node_modules package-lock.json
+          npm install
 
       # Step 6: Zip artifact for deployment (excluding source dirs)
       - name: Zip artifact for deployment
