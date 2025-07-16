@@ -47,7 +47,7 @@ jobs:
 
       # Step 5: Install backend dependencies
       - name: Install backend dependencies
-        run: npm install
+        run: npm ci
 
       # Step 6: Zip artifact for deployment (excluding source dirs)
       - name: Zip artifact for deployment
