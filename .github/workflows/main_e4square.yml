@@ -30,9 +30,9 @@ jobs:
       - name: Build React app
         working-directory: ./client
         env:
-          REACT_APP_SOCKET_URL: https://e4square-c0fqggfndzcvg0h3.centralindia-01.azurewebsites.net
-        run: |
-          CI='' npm run build
+          CI: ''
+          NODE_ENV: production
+        run: npm run build
 
       # Step 3: Move React build output to root-level client-build folder
       - name: Move frontend build to root/client-build
