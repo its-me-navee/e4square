@@ -4,6 +4,7 @@ import ChessBoard from './pages/ChessBoard';
 import Settings from './pages/Settings';
 import Login from './pages/Login';
 import Home from './pages/Home';
+import BotGame from './pages/botGame';
 
 function App() {
   return (
@@ -13,6 +14,7 @@ function App() {
         <Route path="/" element={<Home />} />
         <Route path="/settings" element={<Settings />} />
         <Route path="/game/:gameId" element={<ChessBoard />} />
+        <Route path="/bot" element={<BotGame />} />
       </Routes>
     </Router>
   );
