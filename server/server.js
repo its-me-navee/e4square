@@ -153,7 +153,8 @@ io.on('connection', (socket) => {
             white: { email: invitation.from, socketId: invitingSocketId },
             black: { email: invitation.to, socketId: socket.id }
           },
-          status: 'active'
+          status: 'active',
+          moves: []
         };
         games[invitation.roomId] = game;
 
@@ -176,7 +177,8 @@ io.on('connection', (socket) => {
         // Send game state to both players
         const gameState = {
           fen: game.chess.fen(),
-          turn: game.chess.turn() === 'w' ? 'white' : 'black'
+          turn: game.chess.turn() === 'w' ? 'white' : 'black',
+          moves: game.moves
         };
         
         io.to(invitingSocketId).emit('game-state', gameState);
@@ -264,14 +266,16 @@ io.on('connection', (socket) => {
           // Send current game state to the new player
           socket.emit('game-state', {
             fen: game.chess.fen(),
-            turn: game.chess.turn() === 'w' ? 'white' : 'black'
+            turn: game.chess.turn() === 'w' ? 'white' : 'black',
+            moves: game.moves
           });
           
           // Also send game state to the existing player to ensure sync
           if (otherSocketId) {
             io.to(otherSocketId).emit('game-state', {
               fen: game.chess.fen(),
-              turn: game.chess.turn() === 'w' ? 'white' : 'black'
+              turn: game.chess.turn() === 'w' ? 'white' : 'black',
+              moves: game.moves
             });
           }
         } else if (game.status === 'active') {
@@ -279,7 +283,8 @@ io.on('connection', (socket) => {
           console.log(`🔄 Player ${userEmail} joining already active game ${gameId}`);
           socket.emit('game-state', {
             fen: game.chess.fen(),
-            turn: game.chess.turn() === 'w' ? 'white' : 'black'
+            turn: game.chess.turn() === 'w' ? 'white' : 'black',
+            moves: game.moves
           });
         } else {
           console.log(`⏳ Game ${gameId} waiting for second player`);
@@ -305,7 +310,8 @@ io.on('connection', (socket) => {
         white: { email: userEmail, socketId: socket.id },
         black: { email: null, socketId: null }
       },
-      status: 'waiting'
+      status: 'waiting',
+      moves : []
     };
     games[gameId] = game;
     
@@ -358,6 +364,7 @@ io.on('connection', (socket) => {
       const result = chess.move(move);
       if (result) {
         // Broadcast move to other players in the room
+        game.moves.push({ move: result, fen: chess.fen() });
         socket.to(gameId).emit('opponent-move', { move: result });
         console.log(`✅ Move applied: ${result.from} -> ${result.to}`);
         
@@ -379,7 +386,15 @@ io.on('connection', (socket) => {
       socket.emit('invalid-move', { error: error.message });
     }
   });
-
+  socket.on('get-move-history', ({ gameId }) => {
+    const game = games[gameId];
+    if (game) {
+      socket.emit('move-history', { moves: game.moves });
+    } else {
+      socket.emit('move-history', { error: 'Game not found' });
+    }
+  });
+  
   socket.on('disconnect', () => {
     console.log(`User disconnected: ${socket.id}`);
     
@@ -420,3 +435,5 @@ console.log("Static files served from:", path.join(__dirname, 'client-build'));
 
 server.listen(PORT, () => {
   console.log(`Server is running on ${PORT}`);
+});
+
