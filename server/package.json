@@ -8,12 +8,12 @@
     "test": "echo \"Error: no test specified\" && exit 1"
   },
   "dependencies": {
-    "cors": "^2.8.5",
-    "express": "^5.1.0",
-    "socket.io": "^4.8.1",
     "chess.js": "^1.4.0",
+    "cors": "^2.8.5",
+    "dotenv": "^16.3.1",
+    "express": "4.21.2",
     "firebase-admin": "^11.11.0",
-    "dotenv": "^16.3.1"
+    "socket.io": "^4.8.1"
   },
   "devDependencies": {
     "nodemon": "^3.0.0"

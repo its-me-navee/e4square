@@ -3,7 +3,7 @@ import { io } from 'socket.io-client';
 import { auth } from './firebase';
 import { onAuthStateChanged } from 'firebase/auth';
 
-const socket = io('http://localhost:5000', {
+const socket = io(process.env.REACT_APP_SOCKET_URL || 'http://localhost:5000', {
   autoConnect: false,
 });
 

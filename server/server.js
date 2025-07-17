@@ -18,6 +18,33 @@ const app = express();
 app.use(cors());
 app.use(express.json());
 
+app.use(express.static(path.join(__dirname, 'client-build')));
+
+// Health check endpoint for Azure
+app.get('/health', (req, res) => {
+  res.json({ 
+    status: 'healthy', 
+    timestamp: new Date().toISOString(),
+    uptime: process.uptime(),
+    memory: process.memoryUsage()
+  });
+});
+
+// API status endpoint
+app.get('/api/status', (req, res) => {
+  res.json({ 
+    message: 'E4Square Chess Server',
+    version: '1.0.0',
+    activeGames: Object.keys(games).length,
+    activePlayers: activePlayers.size,
+    environment: process.env.NODE_ENV || 'development'
+  });
+});
+
+app.get('*', (req, res) => {
+  res.sendFile(path.join(__dirname, 'client-build', 'index.html'));
+});
+
 const server = http.createServer(app);
 const io = new Server(server, {
   cors: {origin: "*"}
@@ -42,6 +69,9 @@ io.use(async (socket, next) => {
     console.error('❌ Auth error:', err.message);
     next(new Error('Unauthorized'));
   }
+  // socket.user = { email: `guest_${socket.id}@e4square.test` };
+  // console.log('🔓 Skipped auth, mocked user:', socket.user.email);
+  // next();
 });
 
 io.on('connection', (socket) => {
@@ -378,17 +408,15 @@ io.on('connection', (socket) => {
   });
 });
 
-// Helper function to broadcast active players list
+
 function broadcastActivePlayers() {
   const playersList = Array.from(activePlayers.values());
   io.emit('active-players', playersList);
 }
 
-app.get('/', (req, res) => {
-  res.json({ message: 'E4Square Chess Server' });
-});
 
 const PORT = process.env.PORT || 5000;
+console.log("Static files served from:", path.join(__dirname, 'client-build'));
+
 server.listen(PORT, () => {
   console.log(`Server is running on ${PORT}`);
-});
