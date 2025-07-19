@@ -279,39 +279,6 @@ const Home = () => {
             </div>
           )}
         </div>
-
-        {/* Quick Start Section */}
-        <div style={{ 
-          background: 'rgba(255, 255, 255, 0.1)', 
-          padding: '30px', 
-          borderRadius: '15px',
-          textAlign: 'center'
-        }}>
-          <h2 style={{ color: 'white', marginBottom: '20px' }}>
-            ⚡ Quick Start
-          </h2>
-          <p style={{ color: 'white', opacity: 0.8, marginBottom: '20px' }}>
-            Create a new game and share the link with a friend
-          </p>
-          <button
-            onClick={createNewGame}
-            style={{
-              background: 'linear-gradient(45deg, #2196F3, #1976D2)',
-              color: 'white',
-              border: 'none',
-              padding: '15px 30px',
-              borderRadius: '25px',
-              cursor: 'pointer',
-              fontSize: '16px',
-              fontWeight: 'bold',
-              transition: 'transform 0.2s'
-            }}
-            onMouseOver={(e) => e.target.style.transform = 'scale(1.05)'}
-            onMouseOut={(e) => e.target.style.transform = 'scale(1)'}
-          >
-            🚀 Create New Game
-          </button>
-        </div>
       </div>
 
       {/* Invitation Modal */}
