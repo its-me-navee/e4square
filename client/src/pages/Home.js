@@ -3,7 +3,9 @@ import { useNavigate } from 'react-router-dom';
 import { v4 as uuidv4 } from 'uuid';
 import { auth } from '../firebase';
 import { onAuthStateChanged } from 'firebase/auth';
+import Header from '../components/Header';
 import socket from '../socket';
+
 
 const Home = () => {
   const [userEmail, setUserEmail] = useState('');
@@ -128,6 +130,7 @@ const Home = () => {
     }}>
       <div style={{ maxWidth: '800px', margin: '0 auto' }}>
         {/* Header */}
+        <Header />
         <div style={{ textAlign: 'center', marginBottom: '40px' }}>
           <h1 style={{ color: 'white', fontSize: '3rem', marginBottom: '10px' }}>
             ♔ E4Square Chess
