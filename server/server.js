@@ -435,9 +435,7 @@ function broadcastActivePlayers() {
   io.emit('active-players', playersList);
 }
 
-
 const PORT = process.env.PORT || 5000;
-console.log("Static files served from:", path.join(__dirname, 'client-build'));
 
 server.listen(PORT, () => {
   console.log(`Server is running on ${PORT}`);
