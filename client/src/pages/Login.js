@@ -3,8 +3,7 @@ import { Eye, EyeOff } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 import {
   GoogleAuthProvider,
-  signInWithRedirect,
-  getRedirectResult,
+  signInWithPopup,
   createUserWithEmailAndPassword,
   signInWithEmailAndPassword,
 } from 'firebase/auth';
@@ -12,43 +11,29 @@ import { auth } from '../firebase';
 
 const Login = () => {
   const navigate = useNavigate();
+  useEffect(() => {
+    const token = localStorage.getItem('authToken');
+    if (token) navigate('/');
+  }, []);
 
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [isRegistering, setIsRegistering] = useState(false);
   const [showPassword, setShowPassword] = useState(false);
 
-  useEffect(() => {
-    const checkRedirectResult = async () => {
-      try {
-        const result = await getRedirectResult(auth);
-        if (result && result.user) {
-          const user = result.user;
-          const token = await user.getIdToken();
-          localStorage.setItem('authToken', token);
-          alert(`Logged in as ${user.email}`);
-          navigate('/');
-        }
-      } catch (error) {
-        console.error('Google Sign-In error:', error.message);
-      }
-    };
-  
-    checkRedirectResult();
-  }, []);
-  
 
   const loginWithGoogle = async () => {
     const provider = new GoogleAuthProvider();
-    provider.setCustomParameters({ prompt: 'select_account' });
-    console.log("Redirecting to Google Auth...");
     try {
-      await signInWithRedirect(auth, provider);
+      const result = await signInWithPopup(auth, provider);
+      const token = await result.user.getIdToken();
+      localStorage.setItem('authToken', token);
+      alert('Logged in as ' + result.user.email);
+      window.location.href = '/';
     } catch (err) {
       console.error('Google login failed', err);
     }
   };
-
 
   const handleEmailAuth = async () => {
     try {
