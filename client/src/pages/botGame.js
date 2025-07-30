@@ -42,6 +42,9 @@ const BotGame = () => {
   const [evaluation, setEvaluation] = useState(null);
   const [difficulty, setDifficulty] = useState(5);
   const [gameStatus, setGameStatus] = useState('');
+  const [boardSize, setBoardSize] = useState(520);
+  const [gameStarted, setGameStarted] = useState(false);
+  const [showBoard, setShowBoard] = useState(false);
 
   // Load engine
   useEffect(() => {
@@ -107,6 +110,15 @@ const BotGame = () => {
     engineRef.current.postMessage('go depth 10');
   };
 
+  const startGame = () => {
+    setShowBoard(true);
+    setGameStarted(true);
+    updateConfig();
+    if (playerSide === 'black') {
+      setTimeout(makeBotMove, 500);
+    }
+  };
+
   const updateConfig = useBotUpdateConfig({
     chessRef,
     playerSide,
@@ -114,74 +126,115 @@ const BotGame = () => {
     setMoveHistory,
     setCurrentMoveIndex: () => {}, // Optional: implement if needed
     setGameStatus,
-    onPlayerMove: () => setTimeout(makeBotMove, 100),
+    onPlayerMove: () => {
+      setGameStarted(true);
+      setTimeout(makeBotMove, 100);
+    },
   });
 
   useEffect(() => {
     updateConfig();
     if (playerSide === 'black') {
+      setGameStarted(true);
       setTimeout(makeBotMove, 500);
     }
   }, [playerSide]);
 
+  // Handle responsive board sizing
+  useEffect(() => {
+    const handleResize = () => {
+      if (window.innerWidth <= 480) {
+        setBoardSize(280);
+      } else if (window.innerWidth <= 768) {
+        setBoardSize(320);
+      } else {
+        setBoardSize(520);
+      }
+    };
+
+    handleResize(); // Set initial size
+    window.addEventListener('resize', handleResize);
+    
+    return () => window.removeEventListener('resize', handleResize);
+  }, []);
+
   return (
-    <div style={{ background: 'linear-gradient(to right, #2a2a2a, #4d4d4d)', minHeight: '100vh' }}>
+    <div className="bot-game-container">
       <Header />
 
-      <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', padding: 20 }}>
-        <h2 style={{ color: 'white', marginBottom: 20 }}>Play vs Bot</h2>
+      <div className="bot-game-content">
+        <h2 className="bot-game-title">Play vs Bot</h2>
 
-        {/* Controls */}
-        <div style={{ marginBottom: 20, color: 'white' }}>
-          <label>Side: </label>
-          <select value={playerSide} onChange={e => setPlayerSide(e.target.value)}>
-            <option value="white">White</option>
-            <option value="black">Black</option>
-          </select>
-        </div>
+        {/* Controls - Only show before game starts */}
+        {!gameStarted && (
+          <>
+            <div className="bot-controls">
+              <label>Side: </label>
+              <select value={playerSide} onChange={e => setPlayerSide(e.target.value)}>
+                <option value="white">White</option>
+                <option value="black">Black</option>
+              </select>
+            </div>
 
-        <div style={{ marginBottom: 20, color: 'white' }}>
-          <label>Difficulty: </label>
-          <input
-            type="range"
-            min="0"
-            max="20"
-            value={difficulty}
-            onChange={e => setDifficulty(+e.target.value)}
+            <div className="bot-controls">
+              <label>Difficulty: </label>
+              <input
+                type="range"
+                min="0"
+                max="20"
+                value={difficulty}
+                onChange={e => setDifficulty(+e.target.value)}
+              />
+              <span>{difficulty}</span>
+            </div>
+
+            {/* Start Button */}
+            <button
+              onClick={startGame}
+              className="start-game-button"
+            >
+              🚀 Start Game
+            </button>
+          </>
+        )}
+
+        {/* Game Status - Only show during game */}
+        {gameStarted && (
+          <>
+            {evaluation && (
+              <div className="evaluation">
+                Eval: {evaluation}
+              </div>
+            )}
+
+            {gameStatus && (
+              <div className="game-status">
+                {gameStatus}
+              </div>
+            )}
+          </>
+        )}
+
+        {/* Chess Board - Only show after starting */}
+        {showBoard && (
+          <Chessground
+            width={boardSize}
+            height={boardSize}
+            config={config}
+            contained={false}
           />
-          <span style={{ marginLeft: 10 }}>{difficulty}</span>
-        </div>
-
-        {evaluation && (
-          <div style={{ color: '#4CAF50', marginBottom: 10 }}>
-            Eval: {evaluation}
-          </div>
         )}
 
-        {gameStatus && (
-          <div style={{ color: 'lightgreen', marginBottom: 10 }}>
-            {gameStatus}
-          </div>
-        )}
-
-        <Chessground
-          width={520}
-          height={520}
-          config={config}
-          contained={false}
-        />
-
-        <div style={{ marginTop: 20 }}>
+        <div className="bot-game-buttons">
           <button
             onClick={() => {
               chessRef.current.reset();
               setMoveHistory([]);
               setEvaluation(null);
               setGameStatus('');
+              setGameStarted(false);
+              setShowBoard(false);
               updateConfig();
-              if (playerSide === 'black') {
-                setTimeout(makeBotMove, 500);
-              }
             }}
           >
             ♻ Reset Game
@@ -189,16 +242,7 @@ const BotGame = () => {
 
           <button
             onClick={() => navigate('/')}
-            style={{
-              marginLeft: 20,
-              background: 'rgba(255, 255, 255, 0.1)',
-              color: 'white',
-              border: '1px solid rgba(255, 255, 255, 0.3)',
-              padding: '10px 20px',
-              borderRadius: '25px',
-              cursor: 'pointer',
-              fontSize: '14px',
-            }}
+            className="home-button"
           >
             🏠 Home
           </button>

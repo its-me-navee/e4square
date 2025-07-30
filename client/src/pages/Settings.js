@@ -19,10 +19,10 @@ const Settings = ({ onSave }) => {
   };
 
   return (
-    <div style={{ color: 'white', padding: '20px' }}>
+    <div className="settings-container">
       <h2>Game Settings</h2>
 
-      <div style={{ marginBottom: '20px' }}>
+      <div className="settings-section">
         <label>Premove Type:</label>
         <select value={premove} onChange={(e) => setPremove(e.target.value)}>
           <option value="none">None</option>
@@ -31,7 +31,7 @@ const Settings = ({ onSave }) => {
         </select>
       </div>
 
-      <div style={{ marginBottom: '20px' }}>
+      <div className="settings-section">
         <label>
           <input
             type="checkbox"

@@ -16,26 +16,13 @@ const Header = () => {
   }, []);
 
   return (
-    <div style={{
-      display: 'flex',
-      justifyContent: 'space-between',
-      alignItems: 'center',
-      padding: '10px 20px',
-      color: 'white'
-    }}>
-      <h3 style={{ margin: 0 }}>♔ E4Square</h3>
+    <div className="header">
+      <h3 className="header-title">♔ E4Square</h3>
 
-      <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
-        {username && <span style={{ fontSize: '14px', opacity: 0.8 }}>👤 {username}</span>}
+      <div className="header-user-info">
+        {username && <span className="username">👤 {username}</span>}
 
-        <button onClick={logout} style={{
-          padding: '6px 12px',
-          background: 'black',
-          color: 'white',
-          border: 'none',
-          borderRadius: '4px',
-          cursor: 'pointer'
-        }}>
+        <button onClick={logout} className="logout-button">
           Logout
         </button>
       </div>

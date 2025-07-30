@@ -29,6 +29,7 @@ const ChessBoard = () => {
   const [gameStarted, setGameStarted] = useState(false);
   const [moveHistory, setMoveHistory] = useState([]);
   const [currentMoveIndex, setCurrentMoveIndex] = useState(null);
+  const [boardSize, setBoardSize] = useState(520);
 
   // AUTH REDIRECT
   useAuthRedirect(navigate, setIsLoading);
@@ -73,16 +74,28 @@ const ChessBoard = () => {
     if (playerSide && gameStarted) updateConfig();
   }, [playerSide, gameStarted]);
 
+  // Handle responsive board sizing
+  useEffect(() => {
+    const handleResize = () => {
+      if (window.innerWidth <= 480) {
+        setBoardSize(280);
+      } else if (window.innerWidth <= 768) {
+        setBoardSize(320);
+      } else {
+        setBoardSize(520);
+      }
+    };
+
+    handleResize(); // Set initial size
+    window.addEventListener('resize', handleResize);
+    
+    return () => window.removeEventListener('resize', handleResize);
+  }, []);
+
   if (isLoading) {
     return (
-      <div style={{
-        background: '#262421',
-        minHeight: '100vh',
-        display: 'flex',
-        alignItems: 'center',
-        justifyContent: 'center'
-      }}>
-        <div style={{ color: 'white', fontSize: '18px' }}>
+      <div className="loading-container">
+        <div className="loading-text">
           Loading...
         </div>
       </div>
@@ -90,52 +103,34 @@ const ChessBoard = () => {
   }
 
   return (
-    <div style={{ background: 'linear-gradient(to right, #2a2a2a, #4d4d4d)', minHeight: '100vh' }}>
+    <div className="chess-board-container">
       <Header />
     
-      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', padding: '20px', gap: '20px' }}>
+      <div className="chess-board-layout">
         {/* ◀ LEFT COLUMN: Back to Home */}
         <button
           onClick={() => navigate('/')}
-          style={{
-            background: 'rgba(255, 255, 255, 0.1)',
-            color: 'white',
-            border: '1px solid rgba(255, 255, 255, 0.3)',
-            padding: '10px 20px',
-            borderRadius: '25px',
-            cursor: 'pointer',
-            fontSize: '14px',
-            alignSelf: 'start'          // keeps it at top
-          }}
+          className="back-button"
         >
           🏠 Back to Home
         </button>
   
         {/* ◼ CENTER COLUMN: Chess Board */}
-        <div style={{ textAlign: 'center' }}>
+        <div className="chess-board-center">
           <Chessground
-            width={520}
-            height={520}
+            width={boardSize}
+            height={boardSize}
             config={config}
             contained={false}
           />
         </div>
   
         {/* ▶ RIGHT COLUMN: Move History + Controls */}
-        <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '20px' }}>
+        <div className="chess-board-right">
           {/* Move History */}
-          <div style={{
-            maxHeight: '500px',
-            overflowY: 'auto',
-            color: 'white',
-            fontSize: '14px',
-            padding: '10px',
-            background: '#1e1e1e',
-            borderRadius: '8px',
-            minWidth: '200px'
-          }}>
-            <h4 style={{ marginTop: 0, color: '#7ec8e3' }}>Move History</h4>
-            <table style={{ width: '100%', borderCollapse: 'collapse' }}>
+          <div className="move-history">
+            <h4 className="move-history-title">Move History</h4>
+            <table className="move-history-table">
               <thead>
                 <tr>
                   <th>#</th>
@@ -148,10 +143,7 @@ const ChessBoard = () => {
                   <tr key={idx}>
                     <td>{row.moveNo}</td>
                     <td
-                      style={{
-                        cursor: 'pointer',
-                        color: currentMoveIndex === idx * 2 ? '#FFD700' : 'white'
-                      }}
+                      className={`move-history-cell ${currentMoveIndex === idx * 2 ? 'active' : ''}`}
                       onClick={() => {
                         chessRef.current.load(moveHistory[idx * 2]?.fen);
                         setCurrentMoveIndex(idx * 2);
@@ -162,10 +154,7 @@ const ChessBoard = () => {
                       {row.whiteMove}
                     </td>
                     <td
-                      style={{
-                        cursor: 'pointer',
-                        color: currentMoveIndex === idx * 2 + 1 ? '#FFD700' : 'white'
-                      }}
+                      className={`move-history-cell ${currentMoveIndex === idx * 2 + 1 ? 'active' : ''}`}
                       onClick={() => {
                         chessRef.current.load(moveHistory[idx * 2 + 1]?.fen);
                         setCurrentMoveIndex(idx * 2 + 1);
@@ -183,7 +172,7 @@ const ChessBoard = () => {
           </div>
   
           {/* Prev / Next / Live Controls */}
-          <div style={{ display: 'flex', gap: '10px' }}>
+          <div className="move-history-controls">
             <button onClick={goBack} disabled={currentMoveIndex == null || currentMoveIndex <= 0}>
               ◀ Prev
             </button>

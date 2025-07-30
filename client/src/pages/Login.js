@@ -51,44 +51,43 @@ const Login = () => {
   };
 
   return (
-    <div style={styles.page}>
-      <div style={styles.card}>
-        <h2 style={styles.title}>{isRegistering ? 'Register' : 'Login'}</h2>
+    <div className="login-page">
+      <div className="login-card">
+        <h2 className="login-title">{isRegistering ? 'Register' : 'Login'}</h2>
 
         <input
           type="email"
           placeholder="Email"
           value={email}
           onChange={(e) => setEmail(e.target.value)}
-          style={styles.input}
+          className="login-input"
         />
-        <div style={styles.passwordWrapper}>
+        <div className="password-wrapper">
           <input
             type={showPassword ? 'text' : 'password'}
             placeholder="Password"
             value={password}
             onChange={(e) => setPassword(e.target.value)}
-            style={{ ...styles.input, paddingRight: '44px' }}
-            // style={styles.input}
+            className="login-input-password"
           />
-          <span onClick={() => setShowPassword(!showPassword)} style={styles.eyeIcon}>
+          <span onClick={() => setShowPassword(!showPassword)} className="eye-icon">
             {showPassword ? <EyeOff size={18} color="#ccc" /> : <Eye size={18} color="#ccc" />}
           </span>
         </div>
 
-        <button onClick={handleEmailAuth} style={styles.primaryButton}>
+        <button onClick={handleEmailAuth} className="primary-button">
           {isRegistering ? 'Register with Email' : 'Login with Email'}
         </button>
 
-        <div style={styles.divider}>OR</div>
+        <div className="divider">OR</div>
 
-        <button onClick={loginWithGoogle} style={styles.googleButton}>
+        <button onClick={loginWithGoogle} className="google-button">
           Sign in with Google
         </button>
 
         <p
           onClick={() => setIsRegistering(!isRegistering)}
-          style={styles.toggleText}
+          className="toggle-text"
         >
           {isRegistering
             ? 'Already have an account? Login'
@@ -99,91 +98,6 @@ const Login = () => {
   );
 };
 
-const styles = {
-  page: {
-    backgroundColor: '#121212',
-    minHeight: '100vh',
-    display: 'flex',
-    justifyContent: 'center',
-    alignItems: 'center',
-    fontFamily: '"Segoe UI", sans-serif',
-  },
-  card: {
-    backgroundColor: '#1e1e1e',
-    padding: '40px 30px',
-    borderRadius: '12px',
-    boxShadow: '0 0 15px rgba(0,0,0,0.5)',
-    width: '90%',
-    maxWidth: '400px',
-    textAlign: 'center',
-    color: '#fff',
-  },
-  title: {
-    marginBottom: '20px',
-  },
-  input: {
-    width: '100%',
-    padding: '12px',
-    boxSizing: 'border-box',
-    margin: '10px 0',
-    borderRadius: '8px',
-    border: '1px solid #333',
-    backgroundColor: '#2a2a2a',
-    color: '#fff',
-    fontSize: '14px',
-  },
-  primaryButton: {
-    width: '100%',
-    // padding: '12px',
-    padding: '12px 12px',
-    backgroundColor: '#007bff',
-    border: 'none',
-    borderRadius: '8px',
-    color: '#fff',
-    fontWeight: 'bold',
-    fontSize: '15px',
-    cursor: 'pointer',
-    marginTop: '10px',
-  },
-  googleButton: {
-    width: '100%',
-    // padding: '12px',
-    padding: '12px 12px',
-    backgroundColor: '#db4437',
-    border: 'none',
-    borderRadius: '8px',
-    color: '#fff',
-    fontWeight: 'bold',
-    fontSize: '15px',
-    cursor: 'pointer',
-  },
-  divider: {
-    margin: '20px 0',
-    fontSize: '12px',
-    color: '#888',
-  },
-  toggleText: {
-    marginTop: '15px',
-    fontSize: '14px',
-    color: '#00bfff',
-    cursor: 'pointer',
-  },
-  passwordWrapper: {
-    position: 'relative',
-    width: '100%',
-    margin: '10px 0',
-  },
-  eyeIcon: {
-    position: 'absolute',
-    top: '50%',
-    right: '12px',
-    transform: 'translateY(-50%)',
-    cursor: 'pointer',
-    display: 'flex',
-    alignItems: 'center',
-    justifyContent: 'center',
-    height: '100%',
-  },  
-};
+
 
 export default Login;

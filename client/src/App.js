@@ -5,6 +5,7 @@ import Settings from './pages/Settings';
 import Login from './pages/Login';
 import Home from './pages/Home';
 import BotGame from './pages/botGame';
+import './styles.css';
 
 function App() {
   return (

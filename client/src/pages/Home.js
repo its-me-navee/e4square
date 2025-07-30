@@ -108,14 +108,8 @@ const Home = () => {
   // Show loading while checking authentication
   if (isLoading) {
     return (
-      <div style={{ 
-        minHeight: '100vh', 
-        background: 'linear-gradient(to right, #2a2a2a, #4d4d4d)',
-        display: 'flex',
-        alignItems: 'center',
-        justifyContent: 'center'
-      }}>
-        <div style={{ color: 'white', fontSize: '28px' }}>
+      <div className="loading-container">
+        <div className="loading-text-large">
           Authenticating...
         </div>
       </div>
@@ -123,73 +117,40 @@ const Home = () => {
   }
 
   return (
-    <div style={{ 
-      minHeight: '100vh', 
-      background: 'linear-gradient(to right, #2a2a2a, #4d4d4d)',
-      padding: '20px'
-    }}>
-      <div style={{ maxWidth: '800px', margin: '0 auto' }}>
+    <div className="home-container">
+      <div className="home-content">
         {/* Header */}
         <Header />
-        <div style={{ textAlign: 'center', marginBottom: '40px' }}>
-          <h1 style={{ color: 'white', fontSize: '3rem', marginBottom: '10px' }}>
-            ♔ E4Square Chess
+        <div className="home-header">
+          <h1 className="home-title">
+            ♔ E4Square
           </h1>
-          <p style={{ color: 'white', fontSize: '1.2rem', opacity: 0.9 }}>
-            Challenge players and enjoy real-time chess battles
+          <p className="home-subtitle">
+            Real-time chess battles
           </p>
           
         </div>
 
         {/* Quick Start Section */}
-        <div style={{ 
-          background: 'rgba(255, 255, 255, 0.1)', 
-          padding: '30px', 
-          borderRadius: '15px',
-          textAlign: 'center'
-        }}>
-          <h2 style={{ color: 'white', marginBottom: '20px' }}>
+        <div className="quick-start-section">
+          <h2 className="quick-start-title">
             ⚡ Quick Start
           </h2>
-          <p style={{ color: 'white', opacity: 0.8, marginBottom: '20px' }}>
-            Create a new game or practice against our AI bot
+          <p className="quick-start-description">
+            Start playing now
           </p>
 
-          <div style={{ display: 'flex', justifyContent: 'center', gap: '20px', flexWrap: 'wrap' }}>
+          <div className="quick-start-buttons">
             <button
               onClick={createNewGame}
-              style={{
-                background: 'linear-gradient(45deg, #2196F3, #1976D2)',
-                color: 'white',
-                border: 'none',
-                padding: '15px 30px',
-                borderRadius: '25px',
-                cursor: 'pointer',
-                fontSize: '16px',
-                fontWeight: 'bold',
-                transition: 'transform 0.2s'
-              }}
-              onMouseOver={(e) => e.target.style.transform = 'scale(1.05)'}
-              onMouseOut={(e) => e.target.style.transform = 'scale(1)'}
+              className="create-game-button"
             >
               🚀 Create New Game
             </button>
 
             <button
               onClick={() => navigate('/bot')}
-              style={{
-                background: 'linear-gradient(40deg, #9C27B0, #7B1FA2)',
-                color: 'white',
-                border: 'none',
-                padding: '15px 30px',
-                borderRadius: '25px',
-                cursor: 'pointer',
-                fontSize: '16px',
-                fontWeight: 'bold',
-                transition: 'transform 0.2s'
-              }}
-              onMouseOver={(e) => e.target.style.transform = 'scale(1.05)'}
-              onMouseOut={(e) => e.target.style.transform = 'scale(1)'}
+              className="bot-game-button"
             >
               🤖 Play with Bot
             </button>
@@ -197,57 +158,33 @@ const Home = () => {
         </div>
 
         {/* Active Players Section */}
-        <div style={{ 
-          background: 'rgba(255, 255, 255, 0.1)', 
-          padding: '30px', 
-          borderRadius: '15px',
-          marginBottom: '30px'
-        }}>
-          <h2 style={{ color: 'white', marginBottom: '20px', textAlign: 'center' }}>
-            🎮 Active Players ({activePlayers.length})
+        <div className="active-players-section">
+          <h2 className="active-players-title">
+            🎮 Players Online ({activePlayers.length})
           </h2>
           
           {activePlayers.length === 0 ? (
-            <div style={{ textAlign: 'center', color: 'white', opacity: 0.7 }}>
-              <p>No other players online. Share this link with friends to start playing!</p>
-              <p style={{ fontSize: '14px', marginTop: '10px' }}>
+            <div className="no-players-message">
+              <p>No players online. Share with friends!</p>
+              <p className="share-link">
                 {window.location.origin}
               </p>
             </div>
           ) : (
-            <div style={{ display: 'grid', gap: '15px' }}>
+            <div className="players-grid">
               {activePlayers.map((player) => (
-                <div key={player.socketId} style={{
-                  background: 'rgba(255, 255, 255, 0.1)',
-                  padding: '15px',
-                  borderRadius: '10px',
-                  display: 'flex',
-                  justifyContent: 'space-between',
-                  alignItems: 'center'
-                }}>
-                  <div>
-                    <h3 style={{ color: 'white', margin: 0, fontSize: '16px' }}>
+                <div key={player.socketId} className="player-card">
+                  <div className="player-info">
+                    <h3>
                       {player.name}
                     </h3>
-                    <p style={{ color: 'white', opacity: 0.7, margin: '5px 0 0 0', fontSize: '14px' }}>
+                    <p>
                       {player.email}
                     </p>
                   </div>
                   <button
                     onClick={() => sendInvitation(player.email)}
-                    style={{
-                      background: 'linear-gradient(to right, #2e8b57, #3a3f44)',
-                      color: 'white',
-                      border: 'none',
-                      padding: '10px 20px',
-                      borderRadius: '25px',
-                      cursor: 'pointer',
-                      fontSize: '14px',
-                      fontWeight: 'bold',
-                      transition: 'transform 0.2s'
-                    }}
-                    onMouseOver={(e) => e.target.style.transform = 'scale(1.05)'}
-                    onMouseOut={(e) => e.target.style.transform = 'scale(1)'}
+                    className="challenge-button"
                   >
                     🎯 Challenge
                   </button>
@@ -260,60 +197,24 @@ const Home = () => {
 
       {/* Invitation Modal */}
       {pendingInvitation && (
-        <div style={{
-          position: 'fixed',
-          top: 0,
-          left: 0,
-          right: 0,
-          bottom: 0,
-          background: 'rgba(0, 0, 0, 0.8)',
-          display: 'flex',
-          justifyContent: 'center',
-          alignItems: 'center',
-          zIndex: 1000
-        }}>
-          <div style={{
-            background: 'white',
-            padding: '30px',
-            borderRadius: '15px',
-            textAlign: 'center',
-            maxWidth: '400px',
-            width: '90%'
-          }}>
-            <h2 style={{ color: '#333', marginBottom: '20px' }}>
+        <div className="modal-overlay">
+          <div className="modal-content">
+            <h2 className="modal-title">
               🎮 Game Invitation
             </h2>
-            <p style={{ color: '#666', marginBottom: '30px', fontSize: '16px' }}>
+            <p className="modal-description">
               <strong>{pendingInvitation.fromName}</strong> wants to play chess with you!
             </p>
-            <div style={{ display: 'flex', gap: '15px', justifyContent: 'center' }}>
+            <div className="modal-buttons">
               <button
                 onClick={() => respondToInvitation(true)}
-                style={{
-                  background: '#4CAF50',
-                  color: 'white',
-                  border: 'none',
-                  padding: '12px 24px',
-                  borderRadius: '25px',
-                  cursor: 'pointer',
-                  fontSize: '16px',
-                  fontWeight: 'bold'
-                }}
+                className="accept-button"
               >
                 ✅ Accept
               </button>
               <button
                 onClick={() => respondToInvitation(false)}
-                style={{
-                  background: '#f44336',
-                  color: 'white',
-                  border: 'none',
-                  padding: '12px 24px',
-                  borderRadius: '25px',
-                  cursor: 'pointer',
-                  fontSize: '16px',
-                  fontWeight: 'bold'
-                }}
+                className="decline-button"
               >
                 ❌ Decline
               </button>
