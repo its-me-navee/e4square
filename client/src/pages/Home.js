@@ -110,13 +110,13 @@ const Home = () => {
     return (
       <div style={{ 
         minHeight: '100vh', 
-        background: 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)',
+        background: 'linear-gradient(to right, #2a2a2a, #4d4d4d)',
         display: 'flex',
         alignItems: 'center',
         justifyContent: 'center'
       }}>
-        <div style={{ color: 'white', fontSize: '18px' }}>
-          Loading...
+        <div style={{ color: 'white', fontSize: '28px' }}>
+          Authenticating...
         </div>
       </div>
     );
@@ -125,7 +125,7 @@ const Home = () => {
   return (
     <div style={{ 
       minHeight: '100vh', 
-      background: 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)',
+      background: 'linear-gradient(to right, #2a2a2a, #4d4d4d)',
       padding: '20px'
     }}>
       <div style={{ maxWidth: '800px', margin: '0 auto' }}>
@@ -139,34 +139,8 @@ const Home = () => {
             Challenge players and enjoy real-time chess battles
           </p>
           
-          {/* Connection Status */}
-          <div style={{ 
-            display: 'inline-block',
-            padding: '8px 16px',
-            borderRadius: '20px',
-            backgroundColor: isConnected ? 'rgba(76, 175, 80, 0.2)' : 'rgba(244, 67, 54, 0.2)',
-            color: isConnected ? '#4CAF50' : '#f44336',
-            marginTop: '20px',
-            fontSize: '14px'
-          }}>
-            {isConnected ? '🟢 Connected' : '🔴 Disconnected'}
-          </div>
         </div>
 
-        {/* User Info */}
-        {userEmail && (
-          <div style={{ 
-            background: 'rgba(255, 255, 255, 0.1)', 
-            padding: '20px', 
-            borderRadius: '10px',
-            marginBottom: '30px',
-            textAlign: 'center'
-          }}>
-            <p style={{ color: 'white', fontSize: '18px', margin: 0 }}>
-              👤 Logged in as: <strong>{userEmail}</strong>
-            </p>
-          </div>
-        )}
         {/* Quick Start Section */}
         <div style={{ 
           background: 'rgba(255, 255, 255, 0.1)', 
@@ -204,7 +178,7 @@ const Home = () => {
             <button
               onClick={() => navigate('/bot')}
               style={{
-                background: 'linear-gradient(45deg, #9C27B0, #7B1FA2)',
+                background: 'linear-gradient(40deg, #9C27B0, #7B1FA2)',
                 color: 'white',
                 border: 'none',
                 padding: '15px 30px',
@@ -262,7 +236,7 @@ const Home = () => {
                   <button
                     onClick={() => sendInvitation(player.email)}
                     style={{
-                      background: 'linear-gradient(45deg, #4CAF50, #45a049)',
+                      background: 'linear-gradient(to right, #2e8b57, #3a3f44)',
                       color: 'white',
                       border: 'none',
                       padding: '10px 20px',

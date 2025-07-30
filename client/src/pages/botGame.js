@@ -125,7 +125,7 @@ const BotGame = () => {
   }, [playerSide]);
 
   return (
-    <div style={{ background: '#262421', minHeight: '100vh' }}>
+    <div style={{ background: 'linear-gradient(to right, #2a2a2a, #4d4d4d)', minHeight: '100vh' }}>
       <Header />
 
       <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', padding: 20 }}>

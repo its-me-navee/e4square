@@ -90,70 +90,39 @@ const ChessBoard = () => {
   }
 
   return (
-    <div style={{ background: '#262421', minHeight: '100vh' }}>
+    <div style={{ background: 'linear-gradient(to right, #2a2a2a, #4d4d4d)', minHeight: '100vh' }}>
       <Header />
-
-      <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', padding: '20px' }}>
-        <h2 style={{ color: 'white', marginBottom: '20px' }}>E4Square - Chessground</h2>
-
-        {/* Connection Status */}
-        <div style={{
-          color: isConnected ? '#4CAF50' : '#f44336',
-          marginBottom: '10px',
-          fontSize: '14px'
-        }}>
-          {isConnected ? '🟢 Connected' : '🔴 Disconnected'}
-        </div>
-
-        {/* Player Info */}
-        {playerSide && (
-          <div style={{
+    
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', padding: '20px', gap: '20px' }}>
+        {/* ◀ LEFT COLUMN: Back to Home */}
+        <button
+          onClick={() => navigate('/')}
+          style={{
             background: 'rgba(255, 255, 255, 0.1)',
-            padding: '15px',
-            borderRadius: '10px',
-            marginBottom: '20px',
-            textAlign: 'center',
-            minWidth: '300px'
-          }}>
-            <p style={{ color: 'white', marginBottom: 5 }}>
-              You are playing as <strong style={{ color: '#FFD700' }}>{playerSide.toUpperCase()}</strong>
-            </p>
-            {opponentName && (
-              <p style={{ color: 'white', opacity: 0.8 }}>
-                vs <strong>{opponentName}</strong>
-              </p>
-            )}
-            {!gameStarted ? (
-              <p style={{ color: '#FFA500', marginTop: 10, fontSize: '14px' }}>
-                ⏳ Waiting for opponent to join...
-              </p>
-            ) : (
-              <p style={{ color: '#4CAF50', marginTop: 10, fontSize: '14px' }}>
-                ✅ Game is active - {config.turnColor === playerSide ? 'Your turn' : "Opponent's turn"}
-              </p>
-            )}
-          </div>
-        )}
-
-        {/* Debug */}
-        <div style={{
-          background: 'rgba(255, 255, 255, 0.05)',
-          padding: '10px',
-          borderRadius: '5px',
-          marginBottom: '10px',
-          fontSize: '12px',
-          color: 'rgba(255, 255, 255, 0.7)'
-        }}>
-          <p>Debug: PlayerSide={playerSide}, GameStarted={gameStarted.toString()}, Turn={config.turnColor}</p>
+            color: 'white',
+            border: '1px solid rgba(255, 255, 255, 0.3)',
+            padding: '10px 20px',
+            borderRadius: '25px',
+            cursor: 'pointer',
+            fontSize: '14px',
+            alignSelf: 'start'          // keeps it at top
+          }}
+        >
+          🏠 Back to Home
+        </button>
+  
+        {/* ◼ CENTER COLUMN: Chess Board */}
+        <div style={{ textAlign: 'center' }}>
+          <Chessground
+            width={520}
+            height={520}
+            config={config}
+            contained={false}
+          />
         </div>
-
-        {gameStatus && (
-          <div style={{ color: 'lightgreen', marginBottom: '20px', fontSize: '18px' }}>
-            {gameStatus}
-          </div>
-        )}
-
-        <div style={{ display: 'flex', gap: '20px', justifyContent: 'center', alignItems: 'flex-start' }}>
+  
+        {/* ▶ RIGHT COLUMN: Move History + Controls */}
+        <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '20px' }}>
           {/* Move History */}
           <div style={{
             maxHeight: '500px',
@@ -163,40 +132,44 @@ const ChessBoard = () => {
             padding: '10px',
             background: '#1e1e1e',
             borderRadius: '8px',
-            minWidth: '150px'
+            minWidth: '200px'
           }}>
-            <h4 style={{ marginTop: 0 }}>Move History</h4>
+            <h4 style={{ marginTop: 0, color: '#7ec8e3' }}>Move History</h4>
             <table style={{ width: '100%', borderCollapse: 'collapse' }}>
               <thead>
-                <tr style={{ color: '#FFD700' }}>
+                <tr>
                   <th>#</th>
                   <th>{playerSide === 'white' ? 'You' : opponentName || 'White'}</th>
                   <th>{playerSide === 'black' ? 'You' : opponentName || 'Black'}</th>
                 </tr>
               </thead>
               <tbody>
-                {groupedMoves(moveHistory).map((row, index) => (
-                  <tr key={index}>
+                {groupedMoves(moveHistory).map((row, idx) => (
+                  <tr key={idx}>
                     <td>{row.moveNo}</td>
                     <td
-                      style={{ cursor: 'pointer', color: currentMoveIndex === index * 2 ? '#FFD700' : 'white' }}
+                      style={{
+                        cursor: 'pointer',
+                        color: currentMoveIndex === idx * 2 ? '#FFD700' : 'white'
+                      }}
                       onClick={() => {
-                        chessRef.current.load(moveHistory[index * 2]?.fen);
-                        setCurrentMoveIndex(index * 2);
-                        // Pass the move that led to this FEN
-                        const moveObj = moveHistory[index * 2]?.move;
+                        chessRef.current.load(moveHistory[idx * 2]?.fen);
+                        setCurrentMoveIndex(idx * 2);
+                        const moveObj = moveHistory[idx * 2]?.move;
                         updateConfig(moveObj ? [moveObj.from, moveObj.to] : []);
                       }}
                     >
                       {row.whiteMove}
                     </td>
                     <td
-                      style={{ cursor: 'pointer', color: currentMoveIndex === index * 2 + 1 ? '#FFD700' : 'white' }}
+                      style={{
+                        cursor: 'pointer',
+                        color: currentMoveIndex === idx * 2 + 1 ? '#FFD700' : 'white'
+                      }}
                       onClick={() => {
-                        chessRef.current.load(moveHistory[index * 2 + 1]?.fen);
-                        setCurrentMoveIndex(index * 2 + 1);
-                        // Pass the move that led to this FEN
-                        const moveObj = moveHistory[index * 2 + 1]?.move;
+                        chessRef.current.load(moveHistory[idx * 2 + 1]?.fen);
+                        setCurrentMoveIndex(idx * 2 + 1);
+                        const moveObj = moveHistory[idx * 2 + 1]?.move;
                         updateConfig(moveObj ? [moveObj.from, moveObj.to] : []);
                       }}
                     >
@@ -208,42 +181,24 @@ const ChessBoard = () => {
             </table>
             {moveHistory.length === 0 && <p>No moves yet</p>}
           </div>
-
-          {/* Chess Board */}
-          <div>
-            <Chessground
-              width={520}
-              height={520}
-              config={config}
-              contained={false}
-            />
-            <div style={{ display: 'flex', justifyContent: 'center', marginTop: '10px', gap: '10px' }}>
-              <button onClick={goBack} disabled={currentMoveIndex === null || currentMoveIndex <= 0}>◀ Prev</button>
-              <button onClick={goForward} disabled={currentMoveIndex === null || currentMoveIndex >= moveHistory.length - 1}>Next ▶</button>
-              <button onClick={goLive} disabled={currentMoveIndex === null}>🔄 Live</button>
-            </div>
+  
+          {/* Prev / Next / Live Controls */}
+          <div style={{ display: 'flex', gap: '10px' }}>
+            <button onClick={goBack} disabled={currentMoveIndex == null || currentMoveIndex <= 0}>
+              ◀ Prev
+            </button>
+            <button onClick={goForward} disabled={currentMoveIndex == null || currentMoveIndex >= moveHistory.length - 1}>
+              Next ▶
+            </button>
+            <button onClick={goLive} disabled={currentMoveIndex == null}>
+              🔄 Live
+            </button>
           </div>
         </div>
-
-        {/* Back Button */}
-        <button
-          onClick={() => navigate('/')}
-          style={{
-            background: 'rgba(255, 255, 255, 0.1)',
-            color: 'white',
-            border: '1px solid rgba(255, 255, 255, 0.3)',
-            padding: '10px 20px',
-            borderRadius: '25px',
-            cursor: 'pointer',
-            marginTop: '20px',
-            fontSize: '14px'
-          }}
-        >
-          🏠 Back to Home
-        </button>
       </div>
     </div>
   );
+  
 };
 
 export default ChessBoard;
