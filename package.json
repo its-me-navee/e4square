@@ -1,0 +1,17 @@
+{
+  "name": "e4square",
+  "version": "1.0.0",
+  "private": true,
+  "scripts": {
+    "install-all": "npm --prefix server install && npm --prefix client install",
+    "start": "npm --prefix server start",
+    "start-server": "npm --prefix server start",
+    "start-client": "npm --prefix client start",
+    "dev": "npm --prefix server run dev & npm --prefix client start",
+    "build-client": "npm --prefix client run build",
+    "stage-client": "rm -rf server/client-build && cp -R client/build server/client-build",
+    "build": "npm run build-client && npm run stage-client",
+    "clean:build": "rm -rf client/build server/client-build",
+    "clean:local": "rm -rf .venv client/node_modules server/node_modules"
+  }
+}

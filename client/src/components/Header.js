@@ -1,5 +1,6 @@
-// src/components/Header.js
 import React, { useEffect, useState } from 'react';
+import { NavLink } from 'react-router-dom';
+import { Bot, Home, LogOut, Target, UserRound } from 'lucide-react';
 import { logout } from '../utils/logout';
 import { getAuth } from 'firebase/auth';
 
@@ -17,12 +18,36 @@ const Header = () => {
 
   return (
     <div className="header">
-      <h3 className="header-title">♔ E4Square</h3>
+      <NavLink to="/" className="header-brand">
+        <span className="brand-mark">e4</span>
+        <span>E4Square</span>
+      </NavLink>
+
+      <nav className="header-nav" aria-label="Primary navigation">
+        <NavLink to="/" end>
+          <Home size={16} />
+          Play
+        </NavLink>
+        <NavLink to="/puzzles">
+          <Target size={16} />
+          Puzzles
+        </NavLink>
+        <NavLink to="/bot">
+          <Bot size={16} />
+          Bot
+        </NavLink>
+      </nav>
 
       <div className="header-user-info">
-        {username && <span className="username">👤 {username}</span>}
+        {username && (
+          <span className="username">
+            <UserRound size={15} />
+            {username}
+          </span>
+        )}
 
-        <button onClick={logout} className="logout-button">
+        <button onClick={logout} className="logout-button" title="Log out" type="button">
+          <LogOut size={15} />
           Logout
         </button>
       </div>

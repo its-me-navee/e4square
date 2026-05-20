@@ -9,7 +9,10 @@ export const useBotUpdateConfig = ({
   setMoveHistory,
   setCurrentMoveIndex,
   setGameStatus,
-  onPlayerMove
+  onPlayerMove,
+  gameFinished = false,
+  analysisShapes = [],
+  analysisBrushes = {}
 }) => {
   const updateConfig = useCallback(() => {
     const chess = chessRef.current;
@@ -27,8 +30,8 @@ export const useBotUpdateConfig = ({
       orientation: playerSide,
       lastMove,
       movable: {
-        color: isPlayersTurn ? playerSide : null,
-        dests: isPlayersTurn ? getDests(chess) : new Map(),
+        color: isPlayersTurn && !gameFinished ? playerSide : null,
+        dests: isPlayersTurn && !gameFinished ? getDests(chess) : new Map(),
         showDests: true,
         free: false,
         events: {
@@ -64,17 +67,23 @@ export const useBotUpdateConfig = ({
         },
       },
       draggable: {
-        enabled: isPlayersTurn,
+        enabled: isPlayersTurn && !gameFinished,
         deleteOnDropOff: false,
       },
       premovable: {
-        enabled: settings.premove !== 'none',
+        enabled: settings.premove !== 'none' && !gameFinished,
         castle: true,
         showDests: true,
       },
       highlight: {
         lastMove: true,
         check: true,
+      },
+      drawable: {
+        enabled: false,
+        visible: true,
+        autoShapes: analysisShapes,
+        brushes: analysisBrushes,
       },
       check: chess.inCheck() ? currentTurn : false,
       animation: {
@@ -90,6 +99,9 @@ export const useBotUpdateConfig = ({
     setCurrentMoveIndex,
     setGameStatus,
     onPlayerMove,
+    gameFinished,
+    analysisShapes,
+    analysisBrushes,
   ]);
 
   return updateConfig;

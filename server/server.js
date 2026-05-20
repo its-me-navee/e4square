@@ -6,24 +6,37 @@ const { Chess } = require('chess.js');
 const cors = require('cors');
 const admin = require('firebase-admin');
 const path = require('path');
+const puzzleRoutes = require('./routes/puzzles');
 
-admin.initializeApp({
-  credential: admin.credential.cert({
-    projectId: process.env.FIREBASE_PROJECT_ID,
-    clientEmail: process.env.FIREBASE_CLIENT_EMAIL,
-    privateKey: process.env.FIREBASE_PRIVATE_KEY?.replace(/\\n/g, '\n'),
-  }),
-});
+const firebaseAdminConfig = {
+  projectId: process.env.FIREBASE_PROJECT_ID,
+  clientEmail: process.env.FIREBASE_CLIENT_EMAIL,
+  privateKey: process.env.FIREBASE_PRIVATE_KEY?.replace(/\\n/g, '\n'),
+};
+const hasFirebaseAdminConfig = Boolean(
+  firebaseAdminConfig.projectId &&
+  firebaseAdminConfig.clientEmail &&
+  firebaseAdminConfig.privateKey
+);
+
+if (hasFirebaseAdminConfig) {
+  admin.initializeApp({
+    credential: admin.credential.cert(firebaseAdminConfig),
+  });
+} else {
+  console.warn('Firebase Admin credentials are not configured. Socket auth will reject clients unless ALLOW_GUEST_AUTH=true.');
+}
+
 const app = express();
 app.use(cors());
 app.use(express.json());
 
-// app.use((req, res, next) => {
-//   res.setHeader('Cross-Origin-Opener-Policy', 'same-origin');
-//   res.setHeader('Cross-Origin-Embedder-Policy', 'credentialless');
-//   res.setHeader('Cross-Origin-Resource-Policy', 'cross-origin');
-//   next();
-// });
+app.use((req, res, next) => {
+  res.setHeader('Cross-Origin-Opener-Policy', 'same-origin');
+  res.setHeader('Cross-Origin-Embedder-Policy', 'credentialless');
+  res.setHeader('Cross-Origin-Resource-Policy', 'cross-origin');
+  next();
+});
 
 app.use(
   express.static(path.join(__dirname, "client-build"), {
@@ -31,12 +44,15 @@ app.use(
       res.setHeader("Cross-Origin-Embedder-Policy", "credentialless");
       res.setHeader("Cross-Origin-Opener-Policy", "same-origin");
       res.setHeader("Cross-Origin-Resource-Policy", "cross-origin");
+      if (filePath.endsWith('.wasm')) {
+        res.setHeader('Content-Type', 'application/wasm');
+      }
     },
   })
 );
 app.use(express.static(path.join(__dirname, 'client-build')));
 
-// Health check endpoint for Azure
+// Health check endpoint for AWS load balancers and container platforms.
 app.get('/health', (req, res) => {
   res.json({ 
     status: 'healthy', 
@@ -57,23 +73,309 @@ app.get('/api/status', (req, res) => {
   });
 });
 
+app.use('/api/puzzles', puzzleRoutes);
+
 app.get('*', (req, res) => {
   res.sendFile(path.join(__dirname, 'client-build', 'index.html'));
 });
 
+const DEFAULT_CLOCK_MS = Number(process.env.GAME_CLOCK_MS || 10 * 60 * 1000);
+const ABANDONMENT_GRACE_MS = Number(process.env.ABANDONMENT_GRACE_MS || 15 * 1000);
+const GAME_CLEANUP_MS = Number(process.env.GAME_CLEANUP_MS || 2 * 60 * 1000);
+const CLOCK_TICK_MS = 1000;
+
 const server = http.createServer(app);
 const io = new Server(server, {
-  cors: {origin: "*"}
+  cors: { origin: "*" },
+  pingInterval: 25000,
+  pingTimeout: 20000,
+  connectTimeout: 30000,
+  connectionStateRecovery: {
+    maxDisconnectionDuration: ABANDONMENT_GRACE_MS,
+    skipMiddlewares: false
+  }
 });
 
 // 🧠 Game state manager
 const games = {}; // roomId => { chess: ChessInstance, players: { white, black }, status }
 const activePlayers = new Map(); // socketId => { email, name, status }
 const pendingInvitations = new Map(); // invitationId => { from, to, roomId, timestamp }
-const playerSockets = new Map(); // email => socketId
+const playerSockets = new Map(); // email => Set<socketId>
+
+function addPlayerSocket(email, socketId) {
+  if (!playerSockets.has(email)) {
+    playerSockets.set(email, new Set());
+  }
+  playerSockets.get(email).add(socketId);
+}
+
+function removePlayerSocket(email, socketId) {
+  const sockets = playerSockets.get(email);
+  if (!sockets) return;
+
+  sockets.delete(socketId);
+  if (sockets.size === 0) {
+    playerSockets.delete(email);
+  }
+}
+
+function getPlayerSocket(email) {
+  const sockets = playerSockets.get(email);
+  return sockets ? sockets.values().next().value : null;
+}
+
+function getPlayerSockets(email) {
+  return Array.from(playerSockets.get(email) || []);
+}
+
+function buildActivePlayersList() {
+  const byEmail = new Map();
+
+  for (const player of activePlayers.values()) {
+    if (!player.email) continue;
+
+    const existing = byEmail.get(player.email);
+    if (existing) {
+      existing.connections += 1;
+      if (player.lastSeen > existing.lastSeen) {
+        existing.lastSeen = player.lastSeen;
+      }
+      continue;
+    }
+
+    byEmail.set(player.email, {
+      email: player.email,
+      name: player.name,
+      status: player.status,
+      socketId: getPlayerSocket(player.email) || player.socketId,
+      sessionId: player.sessionId,
+      connections: 1,
+      lastSeen: player.lastSeen
+    });
+  }
+
+  return Array.from(byEmail.values()).sort((a, b) => a.name.localeCompare(b.name));
+}
+
+function createPlayer(email, socketId) {
+  return {
+    email,
+    socketId,
+    connected: Boolean(socketId),
+    disconnectedAt: null,
+    abandonmentDeadline: null
+  };
+}
+
+function createGame({ whiteEmail, whiteSocketId, blackEmail = null, blackSocketId = null, status = 'waiting' }) {
+  return {
+    chess: new Chess(),
+    players: {
+      white: createPlayer(whiteEmail, whiteSocketId),
+      black: createPlayer(blackEmail, blackSocketId)
+    },
+    status,
+    result: null,
+    moves: [],
+    clocks: {
+      white: DEFAULT_CLOCK_MS,
+      black: DEFAULT_CLOCK_MS
+    },
+    lastClockUpdate: Date.now(),
+    abandonmentTimers: {},
+    cleanupTimer: null
+  };
+}
+
+function getTurnSide(game) {
+  return game.chess.turn() === 'w' ? 'white' : 'black';
+}
+
+function getPlayerSide(game, socketId) {
+  if (game.players.white.socketId === socketId) return 'white';
+  if (game.players.black.socketId === socketId) return 'black';
+  return null;
+}
+
+function getOpponentSide(side) {
+  return side === 'white' ? 'black' : 'white';
+}
+
+function getPlayerName(socketId, email) {
+  return activePlayers.get(socketId)?.name || email?.split('@')[0] || 'Opponent';
+}
+
+function clearAbandonmentTimer(game, side) {
+  if (game.abandonmentTimers?.[side]) {
+    clearTimeout(game.abandonmentTimers[side]);
+    delete game.abandonmentTimers[side];
+  }
+}
+
+function markPlayerConnected(game, side, socketId) {
+  const player = game.players[side];
+  clearAbandonmentTimer(game, side);
+  player.socketId = socketId;
+  player.connected = true;
+  player.disconnectedAt = null;
+  player.abandonmentDeadline = null;
+}
+
+function markPlayerDisconnected(game, side) {
+  const player = game.players[side];
+  player.connected = false;
+  player.disconnectedAt = Date.now();
+  player.abandonmentDeadline = player.disconnectedAt + ABANDONMENT_GRACE_MS;
+}
+
+function buildGameState(game) {
+  return {
+    fen: game.chess.fen(),
+    turn: getTurnSide(game),
+    moves: game.moves,
+    status: game.status,
+    result: game.result,
+    clocks: game.clocks,
+    players: {
+      white: {
+        connected: game.players.white.connected,
+        name: getPlayerName(game.players.white.socketId, game.players.white.email)
+      },
+      black: {
+        connected: game.players.black.connected,
+        name: getPlayerName(game.players.black.socketId, game.players.black.email)
+      }
+    },
+    disconnected: ['white', 'black']
+      .filter((side) => game.players[side].email && !game.players[side].connected)
+      .map((side) => ({
+        side,
+        abandonmentDeadline: game.players[side].abandonmentDeadline
+      }))
+  };
+}
+
+function getResultMessage(winner, reason) {
+  const winnerLabel = winner ? `${winner.charAt(0).toUpperCase()}${winner.slice(1)}` : null;
+  if (reason === 'checkmate') return `${winnerLabel} won by checkmate`;
+  if (reason === 'timeout') return `${winnerLabel} won on time`;
+  if (reason === 'resignation') return `${winnerLabel} won by resignation`;
+  if (reason === 'abandonment') return `${winnerLabel} won by abandonment`;
+  if (reason === 'stalemate') return 'Draw by stalemate';
+  if (reason === 'draw') return 'Draw';
+  return winnerLabel ? `${winnerLabel} won` : 'Game over';
+}
+
+function completeGame(gameId, winner, reason) {
+  const game = games[gameId];
+  if (!game || game.status === 'completed') return;
+
+  game.status = 'completed';
+  game.result = {
+    winner,
+    reason,
+    message: getResultMessage(winner, reason),
+    endedAt: Date.now()
+  };
+
+  clearAbandonmentTimer(game, 'white');
+  clearAbandonmentTimer(game, 'black');
+  if (game.cleanupTimer) clearTimeout(game.cleanupTimer);
+
+  game.cleanupTimer = setTimeout(() => {
+    const currentGame = games[gameId];
+    if (currentGame?.status === 'completed' && currentGame.result?.endedAt === game.result.endedAt) {
+      delete games[gameId];
+      console.log(`Cleaned completed game: ${gameId}`);
+    }
+  }, GAME_CLEANUP_MS);
+
+  const state = buildGameState(game);
+  io.to(gameId).emit('game-over', game.result);
+  io.to(gameId).emit('game-state', state);
+}
+
+function updateClock(gameId) {
+  const game = games[gameId];
+  if (!game || game.status !== 'active' || game.result) return false;
+  if (!game.players.white.email || !game.players.black.email) return false;
+
+  const now = Date.now();
+  const turnSide = getTurnSide(game);
+  const elapsed = Math.max(0, now - game.lastClockUpdate);
+  game.clocks[turnSide] = Math.max(0, game.clocks[turnSide] - elapsed);
+  game.lastClockUpdate = now;
+
+  if (game.clocks[turnSide] <= 0) {
+    completeGame(gameId, getOpponentSide(turnSide), 'timeout');
+    return true;
+  }
+
+  return false;
+}
+
+function broadcastGameState(gameId) {
+  const game = games[gameId];
+  if (!game) return;
+  io.to(gameId).emit('game-state', buildGameState(game));
+}
+
+function broadcastClock(gameId) {
+  const game = games[gameId];
+  if (!game) return;
+  io.to(gameId).emit('clock-update', {
+    clocks: game.clocks,
+    turn: getTurnSide(game),
+    status: game.status,
+    result: game.result
+  });
+}
+
+function scheduleAbandonment(gameId, side) {
+  const game = games[gameId];
+  if (!game || game.status !== 'active') return;
+
+  clearAbandonmentTimer(game, side);
+  game.abandonmentTimers[side] = setTimeout(() => {
+    const currentGame = games[gameId];
+    if (!currentGame || currentGame.status !== 'active') return;
+    if (!currentGame.players[side].connected) {
+      completeGame(gameId, getOpponentSide(side), 'abandonment');
+    }
+  }, ABANDONMENT_GRACE_MS);
+}
+
+function beginPlayerAbsence(gameId, side, socket) {
+  const game = games[gameId];
+  if (!game || game.status !== 'active') return;
+  if (!game.players[side].connected) return;
+
+  updateClock(gameId);
+  markPlayerDisconnected(game, side);
+  socket.to(gameId).emit('opponent-disconnected', {
+    side,
+    abandonmentDeadline: game.players[side].abandonmentDeadline
+  });
+  broadcastGameState(gameId);
+  scheduleAbandonment(gameId, side);
+}
+
+function syncActiveGameClock(gameId) {
+  const expired = updateClock(gameId);
+  if (!expired) broadcastClock(gameId);
+}
 
 // 🔐 Socket.IO Auth Middleware
 io.use(async (socket, next) => {
+  if (!hasFirebaseAdminConfig) {
+    if (process.env.ALLOW_GUEST_AUTH === 'true') {
+      socket.user = { email: `guest_${socket.id}@e4square.local` };
+      return next();
+    }
+
+    return next(new Error('Firebase Admin credentials are not configured'));
+  }
+
   const token = socket.handshake.auth.token;
   if (!token) return next(new Error('Missing token'));
   try {
@@ -99,17 +401,19 @@ io.on('connection', (socket) => {
     email: userEmail,
     name: userEmail.split('@')[0], // Use email prefix as name
     status: 'online',
-    socketId: socket.id
+    socketId: socket.id,
+    sessionId: socket.handshake.auth?.sessionId || socket.id,
+    lastSeen: Date.now()
   });
   
   // Map email to socket for easy lookup
-  playerSockets.set(userEmail, socket.id);
+  addPlayerSocket(userEmail, socket.id);
 
   // Broadcast updated player list
   broadcastActivePlayers();
 
   // Send current active players to the new user
-  socket.emit('active-players', Array.from(activePlayers.values()));
+  socket.emit('active-players', buildActivePlayersList());
 
   // Handle player status updates
   socket.on('update-status', (status) => {
@@ -120,30 +424,40 @@ io.on('connection', (socket) => {
     }
   });
 
+  socket.on('request-active-players', () => {
+    socket.emit('active-players', buildActivePlayersList());
+  });
+
   // Handle game invitations
-  socket.on('send-invitation', ({ toEmail, roomId }) => {
+  socket.on('send-invitation', ({ toEmail, toSocketId, roomId }) => {
     const fromPlayer = activePlayers.get(socket.id);
     if (!fromPlayer) return;
 
-    // Find the target player's socket
-    const targetSocketId = playerSockets.get(toEmail);
+    const socketsForEmail = getPlayerSockets(toEmail);
+    const targetSocketIds = socketsForEmail.length > 0
+      ? socketsForEmail
+      : (activePlayers.has(toSocketId) ? [toSocketId] : []);
 
-    if (targetSocketId) {
-      const invitationId = `${fromPlayer.email}-${toEmail}-${Date.now()}`;
+    if (targetSocketIds.length > 0) {
+      const primaryTargetSocketId = targetSocketIds[0];
+      const targetPlayer = activePlayers.get(primaryTargetSocketId);
+      const invitationId = `${socket.id}-${primaryTargetSocketId}-${Date.now()}`;
       pendingInvitations.set(invitationId, {
         from: fromPlayer.email,
-        to: toEmail,
+        fromSocketId: socket.id,
+        to: targetPlayer?.email || toEmail,
+        toSocketIds: targetSocketIds,
         roomId,
         timestamp: Date.now()
       });
 
       // Send invitation to target player
-      io.to(targetSocketId).emit('game-invitation', {
+      targetSocketIds.forEach((targetSocketId) => io.to(targetSocketId).emit('game-invitation', {
         invitationId,
         from: fromPlayer.email,
         fromName: fromPlayer.name,
         roomId
-      });
+      }));
 
       console.log(`🎮 Invitation sent from ${fromPlayer.email} to ${toEmail}`);
     }
@@ -155,23 +469,25 @@ io.on('connection', (socket) => {
     if (!invitation) return;
 
     const respondingPlayer = activePlayers.get(socket.id);
-    if (respondingPlayer.email !== invitation.to) return;
+    if (!respondingPlayer) return;
+    if (Array.isArray(invitation.toSocketIds) && !invitation.toSocketIds.includes(socket.id)) return;
+    if (!invitation.toSocketIds && respondingPlayer.email !== invitation.to) return;
 
     // Find the inviting player's socket
-    const invitingSocketId = playerSockets.get(invitation.from);
+    const invitingSocketId = activePlayers.has(invitation.fromSocketId)
+      ? invitation.fromSocketId
+      : getPlayerSocket(invitation.from);
 
     if (invitingSocketId) {
       if (accepted) {
         // Create game and assign players
-        const game = {
-          chess: new Chess(),
-          players: {
-            white: { email: invitation.from, socketId: invitingSocketId },
-            black: { email: invitation.to, socketId: socket.id }
-          },
-          status: 'active',
-          moves: []
-        };
+        const game = createGame({
+          whiteEmail: invitation.from,
+          whiteSocketId: invitingSocketId,
+          blackEmail: invitation.to,
+          blackSocketId: socket.id,
+          status: 'active'
+        });
         games[invitation.roomId] = game;
 
         // Join both players to the room
@@ -191,11 +507,7 @@ io.on('connection', (socket) => {
         });
 
         // Send game state to both players
-        const gameState = {
-          fen: game.chess.fen(),
-          turn: game.chess.turn() === 'w' ? 'white' : 'black',
-          moves: game.moves
-        };
+        const gameState = buildGameState(game);
         
         io.to(invitingSocketId).emit('game-state', gameState);
         socket.emit('game-state', gameState);
@@ -208,6 +520,11 @@ io.on('connection', (socket) => {
           from: respondingPlayer.email
         });
       }
+
+      const targetSocketIds = Array.isArray(invitation.toSocketIds) ? invitation.toSocketIds : [];
+      targetSocketIds
+        .filter((targetSocketId) => targetSocketId !== socket.id)
+        .forEach((targetSocketId) => io.to(targetSocketId).emit('invitation-cancelled', { invitationId }));
     }
 
     // Clean up invitation
@@ -216,126 +533,88 @@ io.on('connection', (socket) => {
 
   // Handle joining existing games
   socket.on('join-game', ({ gameId }) => {
-    console.log(`🔍 Player ${userEmail} trying to join game ${gameId}`);
+    console.log(`Player ${userEmail} trying to join game ${gameId}`);
     const game = games[gameId];
-    if (game) {
-      console.log(`📋 Current game state:`, {
-        white: game.players.white.email,
-        black: game.players.black.email,
-        status: game.status
-      });
-      
-      // Game exists, assign player to available side
-      let side = null;
-      let opponent = null;
-      
-      if (!game.players.white.email) {
-        side = 'white';
-        game.players.white = { email: userEmail, socketId: socket.id };
-        opponent = game.players.black.email ? activePlayers.get(game.players.black.socketId)?.name : null;
-        console.log(`⚪ Assigned ${userEmail} as white`);
-      } else if (!game.players.black.email) {
-        side = 'black';
-        game.players.black = { email: userEmail, socketId: socket.id };
-        opponent = game.players.white.email ? activePlayers.get(game.players.white.socketId)?.name : null;
-        console.log(`⚫ Assigned ${userEmail} as black`);
-      } else {
-        // Both sides taken, check if player is already in game
-        if (game.players.white.email === userEmail) {
-          side = 'white';
-          opponent = activePlayers.get(game.players.black.socketId)?.name;
-          console.log(`🔄 ${userEmail} already in game as white`);
-        } else if (game.players.black.email === userEmail) {
-          side = 'black';
-          opponent = activePlayers.get(game.players.white.socketId)?.name;
-          console.log(`🔄 ${userEmail} already in game as black`);
-        } else {
-          console.log(`❌ Game is full, ${userEmail} cannot join`);
-        }
-      }
-
-      if (side) {
-        socket.join(gameId);
-        socket.emit('game-joined', {
-          roomId: gameId,
-          side: side,
-          opponent: opponent
-        });
-        
-        console.log(`✅ Player ${userEmail} joined game ${gameId} as ${side}`);
-        
-        // If both players are now in the game, update status and notify both
-        if (game.players.white.email && game.players.black.email) {
-          game.status = 'active';
-          console.log(`🎮 Game ${gameId} is now active with both players`);
-          
-          // Notify other player that opponent joined
-          const otherSide = side === 'white' ? 'black' : 'white';
-          const otherSocketId = game.players[otherSide].socketId;
-          if (otherSocketId && otherSocketId !== socket.id) {
-            io.to(otherSocketId).emit('opponent-joined', {
-              opponent: activePlayers.get(socket.id)?.name
-            });
-            console.log(`📢 Notified ${otherSocketId} that opponent joined`);
-          }
-          
-          // Send current game state to the new player
-          socket.emit('game-state', {
-            fen: game.chess.fen(),
-            turn: game.chess.turn() === 'w' ? 'white' : 'black',
-            moves: game.moves
-          });
-          
-          // Also send game state to the existing player to ensure sync
-          if (otherSocketId) {
-            io.to(otherSocketId).emit('game-state', {
-              fen: game.chess.fen(),
-              turn: game.chess.turn() === 'w' ? 'white' : 'black',
-              moves: game.moves
-            });
-          }
-        } else if (game.status === 'active') {
-          // Game is already active, just send current state to the joining player
-          console.log(`🔄 Player ${userEmail} joining already active game ${gameId}`);
-          socket.emit('game-state', {
-            fen: game.chess.fen(),
-            turn: game.chess.turn() === 'w' ? 'white' : 'black',
-            moves: game.moves
-          });
-        } else {
-          console.log(`⏳ Game ${gameId} waiting for second player`);
-        }
-      } else {
-        console.log(`❌ Could not assign side to ${userEmail}`);
-        socket.emit('game-full', { message: 'Game is full' });
-      }
-    } else {
-      // Game doesn't exist
-      console.log(`❌ Game ${gameId} not found`);
+    if (!game) {
       socket.emit('game-not-found');
+      return;
     }
+
+    let side = getPlayerSide(game, socket.id);
+    let wasDisconnected = false;
+
+    if (!side) {
+      side = ['white', 'black'].find((candidate) => (
+        game.players[candidate].email === userEmail &&
+        !game.players[candidate].connected
+      ));
+      wasDisconnected = Boolean(side);
+    }
+
+    if (!side) {
+      side = ['white', 'black'].find((candidate) => !game.players[candidate].email);
+      if (side) {
+        game.players[side] = createPlayer(userEmail, socket.id);
+      }
+    }
+
+    if (!side) {
+      socket.emit('game-full', { message: 'Game is full' });
+      return;
+    }
+
+    markPlayerConnected(game, side, socket.id);
+    socket.join(gameId);
+
+    if (game.players.white.email && game.players.black.email && game.status === 'waiting') {
+      game.status = 'active';
+      game.lastClockUpdate = Date.now();
+    }
+
+    const opponentSide = getOpponentSide(side);
+    const opponent = game.players[opponentSide].email
+      ? getPlayerName(game.players[opponentSide].socketId, game.players[opponentSide].email)
+      : null;
+
+    socket.emit('game-joined', {
+      roomId: gameId,
+      side,
+      opponent,
+      status: game.status,
+      clocks: game.clocks,
+      result: game.result
+    });
+
+    if (wasDisconnected) {
+      socket.to(gameId).emit('opponent-reconnected', { side });
+    } else if (game.players.white.email && game.players.black.email) {
+      socket.to(gameId).emit('opponent-joined', {
+        opponent: getPlayerName(socket.id, userEmail)
+      });
+    }
+
+    broadcastGameState(gameId);
   });
 
   // Handle creating new games
   socket.on('create-game', ({ gameId }) => {
     console.log(`🎮 Creating new game ${gameId} by ${userEmail}`);
     
-    const game = {
-      chess: new Chess(),
-      players: {
-        white: { email: userEmail, socketId: socket.id },
-        black: { email: null, socketId: null }
-      },
-      status: 'waiting',
-      moves : []
-    };
+    const game = createGame({
+      whiteEmail: userEmail,
+      whiteSocketId: socket.id,
+      status: 'waiting'
+    });
     games[gameId] = game;
     
     socket.join(gameId);
     socket.emit('game-joined', {
       roomId: gameId,
       side: 'white',
-      opponent: null
+      opponent: null,
+      status: game.status,
+      clocks: game.clocks,
+      result: game.result
     });
     
     console.log(`✅ New game created: ${gameId} by ${userEmail} as white`);
@@ -356,12 +635,26 @@ io.on('connection', (socket) => {
       return;
     }
 
+    if (game.status !== 'active') {
+      socket.emit('invalid-move', { error: 'Game is not active' });
+      return;
+    }
+
+    if (updateClock(gameId)) {
+      return;
+    }
+
     // Check if player is in this game
-    const playerSide = game.players.white.email === userEmail ? 'white' : 
-                      game.players.black.email === userEmail ? 'black' : null;
+    const playerSide = game.players.white.socketId === socket.id ? 'white' :
+                      game.players.black.socketId === socket.id ? 'black' : null;
     
     if (!playerSide) {
       console.log('❌ Player not in game:', userEmail);
+      return;
+    }
+
+    if (!game.players[playerSide].connected) {
+      socket.emit('invalid-move', { error: 'You are no longer seated in this game' });
       return;
     }
 
@@ -381,20 +674,22 @@ io.on('connection', (socket) => {
       if (result) {
         // Broadcast move to other players in the room
         game.moves.push({ move: result, fen: chess.fen() });
-        socket.to(gameId).emit('opponent-move', { move: result });
+        game.lastClockUpdate = Date.now();
+        socket.emit('move-confirmed', { move: result, clocks: game.clocks });
+        socket.to(gameId).emit('opponent-move', { move: result, clocks: game.clocks });
         console.log(`✅ Move applied: ${result.from} -> ${result.to}`);
         
         // Check if game is over
         if (chess.isGameOver()) {
-          const gameOverData = {
-            isCheckmate: chess.isCheckmate(),
-            isStalemate: chess.isStalemate(),
-            isDraw: chess.isDraw(),
-            winner: chess.isCheckmate() ? (chess.turn() === 'w' ? 'black' : 'white') : null
-          };
-          
-          // Broadcast game over to all players in the room
-          io.to(gameId).emit('game-over', gameOverData);
+          if (chess.isCheckmate()) {
+            completeGame(gameId, chess.turn() === 'w' ? 'black' : 'white', 'checkmate');
+          } else if (chess.isStalemate()) {
+            completeGame(gameId, null, 'stalemate');
+          } else {
+            completeGame(gameId, null, 'draw');
+          }
+        } else {
+          broadcastClock(gameId);
         }
       }
     } catch (error) {
@@ -402,6 +697,28 @@ io.on('connection', (socket) => {
       socket.emit('invalid-move', { error: error.message });
     }
   });
+
+  socket.on('resign-game', ({ gameId }) => {
+    const game = games[gameId];
+    if (!game) return;
+
+    const playerSide = getPlayerSide(game, socket.id);
+    if (!playerSide || game.status !== 'active') return;
+
+    updateClock(gameId);
+    completeGame(gameId, getOpponentSide(playerSide), 'resignation');
+  });
+
+  socket.on('leave-game-screen', ({ gameId }) => {
+    const game = games[gameId];
+    if (!game) return;
+
+    const playerSide = getPlayerSide(game, socket.id);
+    if (!playerSide) return;
+
+    beginPlayerAbsence(gameId, playerSide, socket);
+  });
+
   socket.on('get-move-history', ({ gameId }) => {
     const game = games[gameId];
     if (game) {
@@ -416,24 +733,38 @@ io.on('connection', (socket) => {
     
     // Remove from active players
     activePlayers.delete(socket.id);
-    playerSockets.delete(userEmail);
+    removePlayerSocket(userEmail, socket.id);
     broadcastActivePlayers();
 
-    // Clean up any pending invitations
+    // Clean up any pending invitations tied to this exact browser tab
     for (const [invitationId, invitation] of pendingInvitations.entries()) {
-      if (invitation.from === userEmail || invitation.to === userEmail) {
+      if (invitation.fromSocketId === socket.id) {
         pendingInvitations.delete(invitationId);
+        continue;
+      }
+
+      if (Array.isArray(invitation.toSocketIds) && invitation.toSocketIds.includes(socket.id)) {
+        invitation.toSocketIds = invitation.toSocketIds.filter((targetSocketId) => targetSocketId !== socket.id);
+        if (invitation.toSocketIds.length === 0) {
+          pendingInvitations.delete(invitationId);
+        }
       }
     }
 
-    // Clean up games where this player was the only one
+    // Active games get a short reconnection grace period, then the
+    // disconnected player loses by abandonment.
     for (const [gameId, game] of Object.entries(games)) {
-      if (game.players.white.email === userEmail && !game.players.black.email) {
+      const side = getPlayerSide(game, socket.id);
+      if (!side) continue;
+
+      if (game.status === 'active') {
+        beginPlayerAbsence(gameId, side, socket);
+        continue;
+      }
+
+      if (game.status === 'waiting') {
         delete games[gameId];
-        console.log(`🗑️ Deleted empty game: ${gameId}`);
-      } else if (game.players.black.email === userEmail && !game.players.white.email) {
-        delete games[gameId];
-        console.log(`🗑️ Deleted empty game: ${gameId}`);
+        console.log(`Deleted waiting game: ${gameId}`);
       }
     }
   });
@@ -441,13 +772,20 @@ io.on('connection', (socket) => {
 
 
 function broadcastActivePlayers() {
-  const playersList = Array.from(activePlayers.values());
-  io.emit('active-players', playersList);
+  io.emit('active-players', buildActivePlayersList());
 }
+
+setInterval(() => {
+  for (const gameId of Object.keys(games)) {
+    const game = games[gameId];
+    if (game?.status === 'active') {
+      syncActiveGameClock(gameId);
+    }
+  }
+}, CLOCK_TICK_MS);
 
 const PORT = process.env.PORT || 5000;
 
 server.listen(PORT, () => {
   console.log(`Server is running on ${PORT}`);
 });
-

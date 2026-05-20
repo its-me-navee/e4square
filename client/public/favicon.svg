@@ -1,0 +1,7 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" role="img" aria-label="E4Square">
+  <rect width="64" height="64" rx="14" fill="#1b1814"/>
+  <path d="M12 12h20v20H12zM32 32h20v20H32z" fill="#81b64c"/>
+  <path d="M32 12h20v20H32zM12 32h20v20H12z" fill="#f2c14e"/>
+  <rect x="18" y="18" width="28" height="28" rx="8" fill="#1b1814" opacity=".92"/>
+  <text x="32" y="39" text-anchor="middle" font-family="Arial, Helvetica, sans-serif" font-size="20" font-weight="800" fill="#f8f1df">e4</text>
+</svg>
