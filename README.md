@@ -1,71 +1,114 @@
-# E4Square - 2-Player Chess Game
+# E4Square
 
-A real-time multiplayer chess game built with React, Socket.IO, and Firebase authentication.
+E4Square is a full-stack chess app with Firebase login, Socket.IO multiplayer, bot play, and a puzzle trainer backed by a local SQLite puzzle database.
 
-## 🚀 Quick Start
+## Features
 
-### Prerequisites
-- Node.js (v14 or higher)
-- npm or yarn
-- Firebase project with Authentication enabled
+- Firebase Authentication for user login.
+- Online lobby with active player presence.
+- Friend games with Socket.IO, clocks, resignation, reconnect handling, and abandonment handling.
+- Stockfish bot play with optional evaluation and board arrows.
+- Puzzle trainer imported from a parquet puzzle file into SQLite.
+- Single-origin production build: Express serves the React app, API routes, Stockfish assets, and Socket.IO.
 
-### Installation
+## Project Structure
 
-1. **Clone and install dependencies:**
-   ```bash
-   npm run install-all
-   ```
+```text
+client/                  React app
+client/public/stockfish  Browser Stockfish WASM assets
+server/                  Express, Socket.IO, Firebase Admin, puzzle API
+server/data/             Local puzzle database location, ignored by git
+scripts/                 Puzzle import utilities
+Dockerfile               Container build for AWS or any Docker host
+```
 
-2. **Set up Firebase:**
-   - Create a Firebase project at [Firebase Console](https://console.firebase.google.com/)
-   - Enable Authentication (Email/Password and Google)
-   - Create a service account and download the JSON key
+## Requirements
 
-3. **Configure environment variables:**
+- Node.js 20 and npm.
+- Firebase project with Authentication enabled.
+- Firebase Admin service account for real multiplayer socket auth.
+- Puzzle parquet file if you want `/puzzles` to work with your own data.
+- Python 3 with `pandas` and `pyarrow` only when importing parquet into SQLite.
 
-   **Server (.env in server folder):**
-   ```env
-   FIREBASE_PROJECT_ID=your-project-id
-   FIREBASE_CLIENT_EMAIL=your-service-account-email
-   FIREBASE_PRIVATE_KEY="-----BEGIN PRIVATE KEY-----\nYour Private Key\n-----END PRIVATE KEY-----\n"
-   PORT=5000
-   NODE_ENV=development
-   ```
+## Fresh Clone Setup
 
-   **Client (.env in client folder):**
-   ```env
-   REACT_APP_FIREBASE_API_KEY=your-api-key
-   REACT_APP_FIREBASE_AUTH_DOMAIN=your-project.firebaseapp.com
-   REACT_APP_FIREBASE_PROJECT_ID=your-project-id
-   REACT_APP_FIREBASE_STORAGE_BUCKET=your-project.appspot.com
-   REACT_APP_FIREBASE_MESSAGING_SENDER_ID=your-sender-id
-   REACT_APP_FIREBASE_APP_ID=your-app-id
-   ```
+Install dependencies:
 
-### Running the Application
+```bash
+npm run install-all
+```
 
-**Option 1: Run both server and client simultaneously**
+Create a local server environment file. This file is ignored and must not be committed:
+
+Use this shape:
+
+```env
+FIREBASE_PROJECT_ID=e4square-5ed72
+FIREBASE_CLIENT_EMAIL=your-service-account-email
+FIREBASE_PRIVATE_KEY="-----BEGIN PRIVATE KEY-----\nYour Private Key\n-----END PRIVATE KEY-----\n"
+PUZZLES_DB_PATH=./data/puzzles.db
+ALLOW_GUEST_AUTH=false
+PORT=5000
+NODE_ENV=development
+```
+
+For temporary local multiplayer testing before Firebase Admin is configured, set `ALLOW_GUEST_AUTH=true`.
+
+
+## Puzzle Database
+
+After training the puzzles data in parquet
+
+Import from parquet:
+
+```bash
+python3 -m venv .venv
+.venv/bin/python -m pip install pandas pyarrow
+.venv/bin/python scripts/import_puzzles.py /path/to/puzzles.parquet --db server/data/puzzles.db
+```
+
+For a small test import:
+
+```bash
+.venv/bin/python scripts/import_puzzles.py /path/to/puzzles.parquet --db server/data/puzzles.db --limit 1000
+```
+
+## Run Locally
+
+Development mode, server and client separately:
+
 ```bash
 npm run dev
 ```
 
-**Option 2: Run separately**
+Server: `http://localhost:5000`
 
-1. **Start the server:**
-   ```bash
-   npm run start-server
-   ```
-   You should see: `Server is running on 5000`
+React dev server: `http://localhost:3000`
 
-2. **Start the client (in another terminal):**
-   ```bash
-   npm run start-client
-   ```
-   This opens the React app on http://localhost:3000
+Production-like local mode, same origin:
 
-## 🎮 How to Play
+```bash
+npm run build
+npm start
+```
 
-1. **Login/Register** using email or Google authentication
-2. **Create a new game** from the home page
-3. **Share the game URL** with your opponent
-4. **Start playing!** White moves first
+Open `http://localhost:5000`.
+
+## Useful Scripts
+
+```bash
+npm run install-all   # install server and client dependencies
+npm run dev           # run server and React dev server
+npm run build         # build React and stage it into server/client-build
+npm start             # start Express server
+npm run clean:build   # remove generated frontend build output
+npm run clean:local   # remove local dependency and Python env folders
+```
+
+
+## Troubleshooting
+
+- `Failed to load puzzles`: `server/data/puzzles.db` is missing or `PUZZLES_DB_PATH` is wrong.
+- Socket auth errors: Firebase Admin env vars are missing, malformed, or guest auth is disabled.
+- Bot/eval uses CPU: engine workers start only when needed, but Stockfish is still compute-heavy while bot search or eval is active.
+- AWS login fails: add the deployed AWS/custom domain to Firebase Authentication authorized domains.

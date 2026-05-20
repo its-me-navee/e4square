@@ -11,7 +11,10 @@ export const useUpdateConfig = ({
   setMoveHistory,
   setCurrentMoveIndex,
   setGameStatus,
-  gameId
+  gameId,
+  gameFinished = false,
+  analysisShapes = [],
+  analysisBrushes = {}
 }) => {
   const updateConfig = useCallback(() => {
     const chess = chessRef.current;
@@ -30,14 +33,14 @@ export const useUpdateConfig = ({
       orientation: playerSide || 'white',
       lastMove,
             movable: {
-        color: isPlayersTurn && gameStarted ? playerSide : null,
-        dests: isPlayersTurn && gameStarted ? getDests(chess) : new Map(),
+        color: isPlayersTurn && gameStarted && !gameFinished ? playerSide : null,
+        dests: isPlayersTurn && gameStarted && !gameFinished ? getDests(chess) : new Map(),
         showDests: true,
         free: false,
         events: {
           after: (from, to) => {
             console.log(`🎯 Move attempted: ${from} -> ${to}, Player: ${playerSide}, Turn: ${currentTurn}, GameStarted: ${gameStarted}`);
-            if (!isPlayersTurn || !gameStarted) {
+            if (!isPlayersTurn || !gameStarted || gameFinished) {
               console.log('❌ Not your turn or game not started');
               return;
             }
@@ -75,17 +78,23 @@ export const useUpdateConfig = ({
         }
       },
       draggable: {
-        enabled: isPlayersTurn && gameStarted,
+        enabled: isPlayersTurn && gameStarted && !gameFinished,
         deleteOnDropOff: false
       },
       premovable: {
-        enabled: settings.premove !== 'none' && gameStarted,
+        enabled: settings.premove !== 'none' && gameStarted && !gameFinished,
         castle: true,
         showDests: true
       },
       highlight: {
         lastMove: true,
         check: true,
+      },
+      drawable: {
+        enabled: false,
+        visible: true,
+        autoShapes: analysisShapes,
+        brushes: analysisBrushes,
       },
       check: chess.inCheck()
         ? (chess.turn() === 'w' ? 'white' : 'black')
@@ -99,11 +108,14 @@ export const useUpdateConfig = ({
     chessRef,
     playerSide,
     gameStarted,
+    gameFinished,
     setConfig,
     setMoveHistory,
     setCurrentMoveIndex,
     setGameStatus,
-    gameId
+    gameId,
+    analysisShapes,
+    analysisBrushes
   ]);
 
   return updateConfig;

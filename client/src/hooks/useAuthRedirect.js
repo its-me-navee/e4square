@@ -9,5 +9,5 @@ export const useAuthRedirect = (navigate, setIsLoading) => {
       else navigate('/login');
     });
     return () => unsubscribe();
-  }, [navigate]);
+  }, [navigate, setIsLoading]);
 };
