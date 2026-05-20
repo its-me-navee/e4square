@@ -37,6 +37,8 @@ function getDb() {
 
   if (!db) {
     db = new Database(dbPath, { readonly: true, fileMustExist: true });
+    db.pragma('query_only = ON');
+    db.pragma('busy_timeout = 5000');
   }
 
   return db;
@@ -89,6 +91,117 @@ function clampLimit(rawLimit, fallback = 15, max = 50) {
   return Math.min(value, max);
 }
 
+function parseRating(rawRating, fallback) {
+  const value = Number.parseInt(rawRating, 10);
+  if (!Number.isFinite(value) || value < 0) return fallback;
+  return value;
+}
+
+function randomIntInclusive(min, max) {
+  return Math.floor(Math.random() * (max - min + 1)) + min;
+}
+
+function uniqueRows(rows, limit) {
+  const seen = new Set();
+  const unique = [];
+
+  for (const row of rows) {
+    if (!row || seen.has(row.id)) continue;
+    seen.add(row.id);
+    unique.push(row);
+    if (unique.length >= limit) break;
+  }
+
+  return unique;
+}
+
+function getRandomPuzzleRows(db, {
+  limit = 15,
+  minRating = 0,
+  maxRating = 3000,
+  theme,
+  excludeId,
+} = {}) {
+  const safeLimit = clampLimit(limit, 15, 200);
+  const safeMinRating = parseRating(minRating, 0);
+  const safeMaxRating = parseRating(maxRating, 3000);
+
+  if (safeMinRating > safeMaxRating) return [];
+
+  const clauses = ['rating >= ?', 'rating <= ?'];
+  const params = [safeMinRating, safeMaxRating];
+
+  if (theme) {
+    clauses.push('themes LIKE ?');
+    params.push(`%${theme}%`);
+  }
+
+  if (excludeId) {
+    clauses.push('id != ?');
+    params.push(excludeId);
+  }
+
+  const whereSql = clauses.join(' AND ');
+  const range = db
+    .prepare('SELECT MIN(rowid) AS minRowid, MAX(rowid) AS maxRowid FROM puzzles')
+    .get();
+
+  if (!range?.minRowid || !range?.maxRowid) return [];
+
+  const forwardStmt = db.prepare(
+    `SELECT id, fen, moves, rating, themes
+     FROM puzzles
+     WHERE rowid >= ? AND ${whereSql}
+     ORDER BY rowid
+     LIMIT 1`
+  );
+  const wrapStmt = db.prepare(
+    `SELECT id, fen, moves, rating, themes
+     FROM puzzles
+     WHERE rowid < ? AND ${whereSql}
+     ORDER BY rowid
+     LIMIT 1`
+  );
+
+  const selected = [];
+  const seenIds = new Set();
+  const minRowid = Number(range.minRowid);
+  const maxRowid = Number(range.maxRowid);
+  const maxAttempts = Math.max(safeLimit * 25, 100);
+
+  for (let attempt = 0; attempt < maxAttempts && selected.length < safeLimit; attempt += 1) {
+    const rowid = randomIntInclusive(minRowid, maxRowid);
+    const row = forwardStmt.get(rowid, ...params) || wrapStmt.get(rowid, ...params);
+
+    if (row && !seenIds.has(row.id)) {
+      seenIds.add(row.id);
+      selected.push(row);
+    }
+  }
+
+  if (selected.length < safeLimit) {
+    const fillRows = db
+      .prepare(
+        `SELECT id, fen, moves, rating, themes
+         FROM puzzles
+         WHERE ${whereSql}
+         ORDER BY rowid
+         LIMIT ?`
+      )
+      .all(...params, safeLimit * 2);
+
+    for (const row of fillRows) {
+      if (!seenIds.has(row.id)) {
+        seenIds.add(row.id);
+        selected.push(row);
+      }
+      if (selected.length >= safeLimit) break;
+    }
+  }
+
+  return selected;
+}
+
 function getPuzzleById(id) {
   const row = getDb()
     .prepare('SELECT id, fen, moves, rating, themes FROM puzzles WHERE id = ?')
@@ -99,18 +212,13 @@ function getPuzzleById(id) {
 function getDiversePuzzles({ limit = 15, maxRating = 2100 } = {}) {
   const db = getDb();
   const safeLimit = clampLimit(limit);
-  const safeMaxRating = Number.parseInt(maxRating, 10) || 2100;
+  const safeMaxRating = parseRating(maxRating, 2100);
   const sampleSize = Math.min(safeLimit * 4, 200);
 
-  const rows = db
-    .prepare(
-      `SELECT id, fen, moves, rating, themes
-       FROM puzzles
-       WHERE rating >= 0 AND rating <= ?
-       ORDER BY RANDOM()
-       LIMIT ?`
-    )
-    .all(safeMaxRating, sampleSize);
+  const rows = getRandomPuzzleRows(db, {
+    limit: sampleSize,
+    maxRating: safeMaxRating,
+  });
 
   const selected = [];
   const seenThemes = new Set();
@@ -143,7 +251,7 @@ function getDiversePuzzles({ limit = 15, maxRating = 2100 } = {}) {
 function getSimilarPuzzles(id, { limit = 15, maxRating = 3000 } = {}) {
   const db = getDb();
   const safeLimit = clampLimit(limit);
-  const safeMaxRating = Number.parseInt(maxRating, 10) || 3000;
+  const safeMaxRating = parseRating(maxRating, 3000);
 
   const source = db
     .prepare('SELECT id, fen, moves, rating, themes, similar_puzzles FROM puzzles WHERE id = ?')
@@ -177,28 +285,46 @@ function getSimilarPuzzles(id, { limit = 15, maxRating = 3000 } = {}) {
   const sourceThemes = parseJsonArray(source.themes);
   const primaryTheme = sourceThemes[0];
   const sourceRating = Number(source.rating || 0);
+  const lowerRating = Math.max(0, sourceRating - 350);
+  const upperRating = Math.min(safeMaxRating, sourceRating + 350);
+  const fallbackRows = [];
 
-  const fallbackRows = primaryTheme
-    ? db
-        .prepare(
-          `SELECT id, fen, moves, rating, themes
-           FROM puzzles
-           WHERE id != ? AND rating >= 0 AND rating <= ? AND themes LIKE ?
-           ORDER BY ABS(rating - ?), RANDOM()
-           LIMIT ?`
-        )
-        .all(id, safeMaxRating, `%${primaryTheme}%`, sourceRating, safeLimit)
-    : db
-        .prepare(
-          `SELECT id, fen, moves, rating, themes
-           FROM puzzles
-           WHERE id != ? AND rating >= 0 AND rating <= ?
-           ORDER BY ABS(rating - ?), RANDOM()
-           LIMIT ?`
-        )
-        .all(id, safeMaxRating, sourceRating, safeLimit);
+  if (primaryTheme) {
+    fallbackRows.push(
+      ...getRandomPuzzleRows(db, {
+        limit: safeLimit * 4,
+        minRating: lowerRating,
+        maxRating: upperRating,
+        theme: primaryTheme,
+        excludeId: id,
+      })
+    );
+  }
 
-  return { found: true, results: fallbackRows.map(rowToPuzzle) };
+  fallbackRows.push(
+    ...getRandomPuzzleRows(db, {
+      limit: safeLimit * 4,
+      minRating: lowerRating,
+      maxRating: upperRating,
+      excludeId: id,
+    })
+  );
+
+  if (fallbackRows.length < safeLimit) {
+    fallbackRows.push(
+      ...getRandomPuzzleRows(db, {
+        limit: safeLimit * 4,
+        maxRating: safeMaxRating,
+        excludeId: id,
+      })
+    );
+  }
+
+  const rankedRows = uniqueRows(fallbackRows, safeLimit * 4).sort(
+    (left, right) => Math.abs(Number(left.rating || 0) - sourceRating) - Math.abs(Number(right.rating || 0) - sourceRating)
+  );
+
+  return { found: true, results: rankedRows.slice(0, safeLimit).map(rowToPuzzle) };
 }
 
 function getStats() {

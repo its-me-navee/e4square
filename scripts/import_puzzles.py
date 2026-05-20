@@ -1,13 +1,9 @@
 #!/usr/bin/env python3
 import argparse
 import json
+import math
 import sqlite3
 from pathlib import Path
-
-try:
-    import pandas as pd
-except ImportError:
-    pd = None
 
 try:
     import pyarrow.parquet as pq
@@ -44,7 +40,7 @@ def list_value(value):
     if hasattr(value, "tolist"):
         return list_value(value.tolist())
 
-    if pd is not None and pd.isna(value):
+    if isinstance(value, float) and math.isnan(value):
         return []
 
     if isinstance(value, str):
@@ -64,7 +60,7 @@ def list_value(value):
 
 def rating_value(value):
     try:
-        if value is None or (pd is not None and pd.isna(value)):
+        if value is None or (isinstance(value, float) and math.isnan(value)):
             return 0
         return int(value)
     except (TypeError, ValueError):
@@ -84,62 +80,42 @@ def create_schema(conn):
           themes TEXT NOT NULL DEFAULT '[]',
           similar_puzzles TEXT NOT NULL DEFAULT '[]'
         );
+        """
+    )
 
+
+def create_indexes(conn):
+    conn.executescript(
+        """
         CREATE INDEX idx_puzzles_rating ON puzzles(rating);
         CREATE INDEX idx_puzzles_id_rating ON puzzles(id, rating);
         """
     )
 
 
-def is_missing(value):
-    if value is None:
-        return True
-    if isinstance(value, (list, tuple, set, dict)):
-        return False
-    if pd is not None:
-        try:
-            return bool(pd.isna(value))
-        except (TypeError, ValueError):
-            return False
-    return False
-
-
 def parquet_columns(parquet_path):
-    if pq is not None:
-        return pq.ParquetFile(parquet_path).schema_arrow.names
+    if pq is None:
+        raise SystemExit("Missing Python dependency. Run: python3 -m pip install pyarrow")
 
-    if pd is None:
-        raise SystemExit("Missing Python dependency. Run: python3 -m pip install pandas pyarrow")
-
-    return pd.read_parquet(parquet_path).columns
+    return pq.ParquetFile(parquet_path).schema_arrow.names
 
 
-def iter_parquet_rows(parquet_path, columns, limit=None):
+def iter_parquet_rows(parquet_path, columns, limit=None, batch_size=5000):
     selected_columns = sorted({column for column in columns.values() if column})
     emitted = 0
 
-    if pq is not None:
-        parquet_file = pq.ParquetFile(parquet_path)
-        for batch in parquet_file.iter_batches(batch_size=50000, columns=selected_columns):
-            data = batch.to_pydict()
-            batch_rows = batch.num_rows
-            for index in range(batch_rows):
-                if limit and emitted >= limit:
-                    return
-                emitted += 1
-                yield {column: data[column][index] for column in selected_columns}
-        return
-
-    df = pd.read_parquet(parquet_path, columns=selected_columns)
-    if limit:
-        df = df.head(limit)
-    for _, row in df.iterrows():
-        yield row
+    parquet_file = pq.ParquetFile(parquet_path)
+    for batch in parquet_file.iter_batches(batch_size=batch_size, columns=selected_columns):
+        for row in batch.to_pylist():
+            if limit and emitted >= limit:
+                return
+            emitted += 1
+            yield row
 
 
-def import_parquet(parquet_path, db_path, limit=None):
-    if pd is None and pq is None:
-        raise SystemExit("Missing Python dependency. Run: python3 -m pip install pandas pyarrow")
+def import_parquet(parquet_path, db_path, limit=None, batch_size=5000):
+    if pq is None:
+        raise SystemExit("Missing Python dependency. Run: python3 -m pip install pyarrow")
 
     parquet_path = Path(parquet_path).expanduser().resolve()
     db_path = Path(db_path).expanduser().resolve()
@@ -160,6 +136,9 @@ def import_parquet(parquet_path, db_path, limit=None):
         )
 
     with sqlite3.connect(db_path) as conn:
+        conn.execute("PRAGMA journal_mode=OFF")
+        conn.execute("PRAGMA synchronous=OFF")
+        conn.execute("PRAGMA temp_store=FILE")
         create_schema(conn)
         insert_sql = """
         INSERT OR REPLACE INTO puzzles
@@ -169,7 +148,7 @@ def import_parquet(parquet_path, db_path, limit=None):
         rows = []
         imported_count = 0
 
-        for row in iter_parquet_rows(parquet_path, columns, limit):
+        for row in iter_parquet_rows(parquet_path, columns, limit, batch_size):
             puzzle_id = str(row[columns["id"]]).strip()
             fen = str(row[columns["fen"]]).strip()
 
@@ -196,7 +175,7 @@ def import_parquet(parquet_path, db_path, limit=None):
                 )
             )
 
-            if len(rows) >= 50000:
+            if len(rows) >= batch_size:
                 conn.executemany(insert_sql, rows)
                 imported_count += len(rows)
                 print(f"Imported {imported_count} puzzles...", flush=True)
@@ -206,6 +185,8 @@ def import_parquet(parquet_path, db_path, limit=None):
             conn.executemany(insert_sql, rows)
             imported_count += len(rows)
 
+        create_indexes(conn)
+        conn.execute("PRAGMA optimize")
         conn.commit()
 
     print(f"Imported {imported_count} puzzles into {db_path}")
@@ -220,9 +201,15 @@ def main():
         help="Output SQLite database path. Defaults to server/data/puzzles.db.",
     )
     parser.add_argument("--limit", type=int, default=None, help="Optional row limit for test imports.")
+    parser.add_argument(
+        "--batch-size",
+        type=int,
+        default=5000,
+        help="Rows to process per parquet/sqlite batch. Defaults to 5000 to keep memory bounded.",
+    )
     args = parser.parse_args()
 
-    import_parquet(args.parquet_path, args.db, args.limit)
+    import_parquet(args.parquet_path, args.db, args.limit, args.batch_size)
 
 
 if __name__ == "__main__":

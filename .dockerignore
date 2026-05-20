@@ -12,9 +12,16 @@ server/.env
 server/.env.*
 
 .venv
+__pycache__
+**/__pycache__
 **/node_modules
 client/build
 server/client-build
+server/data/*.db
+server/data/*.db-*
+server/data/*.sqlite
+server/data/*.parquet
+server/data/*.parqet
 coverage
 *.log
 npm-debug.log*

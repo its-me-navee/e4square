@@ -8,6 +8,7 @@ server/.env
 server/.env.*
 node_modules/
 .venv/
+__pycache__/
 client/node_modules/
 server/node_modules/
 client/build/
@@ -21,3 +22,4 @@ server/data/*.db
 server/data/*.db-*
 server/data/*.sqlite
 server/data/*.parquet
+server/data/*.parqet
