@@ -115,6 +115,19 @@ function uniqueRows(rows, limit) {
   return unique;
 }
 
+function rowMatchesFilters(row, {
+  minRating,
+  maxRating,
+  theme,
+  excludeId,
+}) {
+  if (!row) return false;
+  if (excludeId && row.id === excludeId) return false;
+  if (Number(row.rating || 0) < minRating || Number(row.rating || 0) > maxRating) return false;
+  if (theme && !parseJsonArray(row.themes).includes(theme)) return false;
+  return true;
+}
+
 function getRandomPuzzleRows(db, {
   limit = 15,
   minRating = 0,
@@ -127,59 +140,73 @@ function getRandomPuzzleRows(db, {
   const safeMaxRating = parseRating(maxRating, 3000);
 
   if (safeMinRating > safeMaxRating) return [];
-
-  const clauses = ['rating >= ?', 'rating <= ?'];
-  const params = [safeMinRating, safeMaxRating];
-
-  if (theme) {
-    clauses.push('themes LIKE ?');
-    params.push(`%${theme}%`);
-  }
-
-  if (excludeId) {
-    clauses.push('id != ?');
-    params.push(excludeId);
-  }
-
-  const whereSql = clauses.join(' AND ');
   const range = db
     .prepare('SELECT MIN(rowid) AS minRowid, MAX(rowid) AS maxRowid FROM puzzles')
     .get();
 
   if (!range?.minRowid || !range?.maxRowid) return [];
 
+  const batchSize = theme ? 48 : 20;
   const forwardStmt = db.prepare(
     `SELECT id, fen, moves, rating, themes
      FROM puzzles
-     WHERE rowid >= ? AND ${whereSql}
+     WHERE rowid >= ?
      ORDER BY rowid
-     LIMIT 1`
+     LIMIT ?`
   );
   const wrapStmt = db.prepare(
     `SELECT id, fen, moves, rating, themes
      FROM puzzles
-     WHERE rowid < ? AND ${whereSql}
+     WHERE rowid < ?
      ORDER BY rowid
-     LIMIT 1`
+     LIMIT ?`
   );
 
   const selected = [];
   const seenIds = new Set();
   const minRowid = Number(range.minRowid);
   const maxRowid = Number(range.maxRowid);
-  const maxAttempts = Math.max(safeLimit * 25, 100);
+  const maxAttempts = Math.max(safeLimit * (theme ? 35 : 8), 80);
 
   for (let attempt = 0; attempt < maxAttempts && selected.length < safeLimit; attempt += 1) {
     const rowid = randomIntInclusive(minRowid, maxRowid);
-    const row = forwardStmt.get(rowid, ...params) || wrapStmt.get(rowid, ...params);
+    const rows = forwardStmt.all(rowid, batchSize);
+    const candidates = rows.length > 0 ? rows : wrapStmt.all(rowid, batchSize);
 
-    if (row && !seenIds.has(row.id)) {
-      seenIds.add(row.id);
-      selected.push(row);
+    for (const row of candidates) {
+      if (!rowMatchesFilters(row, {
+        minRating: safeMinRating,
+        maxRating: safeMaxRating,
+        theme,
+        excludeId,
+      })) {
+        continue;
+      }
+
+      if (!seenIds.has(row.id)) {
+        seenIds.add(row.id);
+        selected.push(row);
+      }
+
+      if (selected.length >= safeLimit) break;
     }
   }
 
   if (selected.length < safeLimit) {
+    const clauses = ['rating >= ?', 'rating <= ?'];
+    const params = [safeMinRating, safeMaxRating];
+
+    if (theme) {
+      clauses.push('themes LIKE ?');
+      params.push(`%${theme}%`);
+    }
+
+    if (excludeId) {
+      clauses.push('id != ?');
+      params.push(excludeId);
+    }
+
+    const whereSql = clauses.join(' AND ');
     const fillRows = db
       .prepare(
         `SELECT id, fen, moves, rating, themes

@@ -2483,6 +2483,13 @@ a svg {
   font-size: 12px;
 }
 
+.puzzle-modal-meta .puzzle-side-to-move {
+  color: #17210d;
+  background: var(--green);
+  border-color: rgba(129, 182, 76, 0.62);
+  font-weight: 900;
+}
+
 .puzzle-theme-list span {
   border-radius: 6px;
   color: #d8e7ff;
@@ -2986,6 +2993,8 @@ body.board-viewport-lock #root {
 
 .eval-bar {
   width: 34px;
+  min-width: 34px;
+  flex: 0 0 34px;
   display: grid;
   grid-template-rows: minmax(0, 1fr) auto;
   gap: 7px;
@@ -2994,6 +3003,7 @@ body.board-viewport-lock #root {
   font-weight: 800;
   text-align: center;
   font-variant-numeric: tabular-nums;
+  pointer-events: none;
 }
 
 .eval-bar-track {
@@ -3033,6 +3043,10 @@ body.board-viewport-lock #root {
   background: rgba(20, 20, 20, 0.6);
 }
 
+.eval-bar-placeholder {
+  visibility: hidden;
+}
+
 .board-frame {
   --frame-pad: 8px;
   box-sizing: content-box;
@@ -3061,6 +3075,7 @@ body.board-viewport-lock #root {
 }
 
 .board-surface {
+  position: relative;
   width: var(--board-size);
   height: var(--board-size);
   overflow: hidden;
@@ -3071,6 +3086,19 @@ body.board-viewport-lock #root {
 .board-surface .cg-wrap {
   border-radius: 6px;
   box-shadow: none;
+}
+
+.engine-lines-overlay {
+  position: absolute;
+  inset: 0;
+  z-index: 3;
+  width: 100%;
+  height: 100%;
+  pointer-events: none;
+}
+
+.engine-line-arrow {
+  filter: drop-shadow(0 1px 1px rgba(0, 0, 0, 0.28));
 }
 
 .board-frame cg-board {
@@ -3213,6 +3241,12 @@ body.board-viewport-lock #root {
 
 .bot-game-buttons .bot-board-eval-toggle .eval-toggle-label {
   color: var(--muted);
+}
+
+.bot-game-buttons .bot-analysis-depth,
+.finished-game-actions .game-analysis-depth,
+.puzzle-tool-row .puzzle-analysis-depth {
+  flex: 0 1 210px;
 }
 
 .bot-game-buttons button:focus-visible,
@@ -3439,6 +3473,53 @@ body.board-viewport-lock #root {
   color: var(--text);
   cursor: pointer;
   user-select: none;
+}
+
+.analysis-depth-control {
+  display: inline-grid;
+  grid-template-columns: auto minmax(86px, 118px) 26px;
+  align-items: center;
+  gap: 8px;
+  min-height: 38px;
+  padding: 8px 10px;
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  border-radius: 8px;
+  background: rgba(255, 255, 255, 0.06);
+  color: var(--text);
+}
+
+.analysis-depth-control input[type="range"] {
+  width: 100%;
+  margin: 0;
+  accent-color: var(--gold);
+  cursor: pointer;
+}
+
+.analysis-depth-control input[type="range"]:disabled {
+  cursor: not-allowed;
+  opacity: 0.55;
+}
+
+.analysis-depth-control strong {
+  min-width: 24px;
+  color: var(--gold);
+  font-size: 13px;
+  font-weight: 900;
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+}
+
+.engine-guard-status {
+  display: inline-flex;
+  align-items: center;
+  min-height: 38px;
+  padding: 8px 10px;
+  border: 1px solid rgba(242, 193, 78, 0.26);
+  border-radius: 8px;
+  background: rgba(242, 193, 78, 0.1);
+  color: var(--gold);
+  font-size: 12px;
+  font-weight: 800;
 }
 
 .eval-toggle-label,

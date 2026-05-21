@@ -11,13 +11,14 @@ export const useBotUpdateConfig = ({
   setGameStatus,
   onPlayerMove,
   gameFinished = false,
-  analysisShapes = [],
-  analysisBrushes = {}
+  analysisMode = false,
 }) => {
   const updateConfig = useCallback(() => {
     const chess = chessRef.current;
     const currentTurn = chess.turn() === 'w' ? 'white' : 'black';
     const isPlayersTurn = playerSide === currentTurn;
+    const canMove = analysisMode || (isPlayersTurn && !gameFinished);
+    const movableColor = analysisMode ? currentTurn : playerSide;
     const settings = getSettings();
 
     const history = chess.history({ verbose: true });
@@ -30,12 +31,14 @@ export const useBotUpdateConfig = ({
       orientation: playerSide,
       lastMove,
       movable: {
-        color: isPlayersTurn && !gameFinished ? playerSide : null,
-        dests: isPlayersTurn && !gameFinished ? getDests(chess) : new Map(),
+        color: canMove ? movableColor : null,
+        dests: canMove ? getDests(chess) : new Map(),
         showDests: true,
         free: false,
         events: {
           after: (from, to) => {
+            if (!analysisMode && (!isPlayersTurn || gameFinished)) return;
+
             const piece = chess.get(from);
             let promotion;
 
@@ -49,9 +52,11 @@ export const useBotUpdateConfig = ({
             try {
               const move = chess.move({ from, to, promotion });
               if (move) {
-                setMoveHistory(prev => [...prev, { move, fen: chess.fen() }]);
+                setMoveHistory((prev) => [...prev, { move, fen: chess.fen() }]);
                 setCurrentMoveIndex(null);
                 updateConfig();
+
+                if (analysisMode) return;
 
                 const status = evaluateGameStatus(chess);
                 setGameStatus(status);
@@ -67,11 +72,11 @@ export const useBotUpdateConfig = ({
         },
       },
       draggable: {
-        enabled: isPlayersTurn && !gameFinished,
+        enabled: canMove,
         deleteOnDropOff: false,
       },
       premovable: {
-        enabled: settings.premove !== 'none' && !gameFinished,
+        enabled: settings.premove !== 'none' && !gameFinished && !analysisMode,
         castle: true,
         showDests: true,
       },
@@ -82,8 +87,8 @@ export const useBotUpdateConfig = ({
       drawable: {
         enabled: false,
         visible: true,
-        autoShapes: analysisShapes,
-        brushes: analysisBrushes,
+        autoShapes: [],
+        brushes: {},
       },
       check: chess.inCheck() ? currentTurn : false,
       animation: {
@@ -100,8 +105,7 @@ export const useBotUpdateConfig = ({
     setGameStatus,
     onPlayerMove,
     gameFinished,
-    analysisShapes,
-    analysisBrushes,
+    analysisMode,
   ]);
 
   return updateConfig;
