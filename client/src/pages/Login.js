@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useCallback, useEffect, useRef, useState } from 'react';
 import {
   Chrome,
   Eye,
@@ -13,11 +13,28 @@ import {
 import { useNavigate } from 'react-router-dom';
 import {
   GoogleAuthProvider,
-  signInWithPopup,
+  getRedirectResult,
+  onAuthStateChanged,
   createUserWithEmailAndPassword,
   signInWithEmailAndPassword,
+  signInWithRedirect,
 } from 'firebase/auth';
 import { auth } from '../firebase';
+
+const googleProvider = new GoogleAuthProvider();
+googleProvider.setCustomParameters({ prompt: 'select_account' });
+
+let redirectResultRequest = null;
+
+const getGoogleRedirectResult = () => {
+  if (!redirectResultRequest) {
+    redirectResultRequest = getRedirectResult(auth).finally(() => {
+      redirectResultRequest = null;
+    });
+  }
+
+  return redirectResultRequest;
+};
 
 const loginSquares = Array.from({ length: 64 }, (_, index) => {
   const row = Math.floor(index / 8);
@@ -43,8 +60,14 @@ const getAuthErrorMessage = (error) => {
       return 'Use at least 6 characters for the password.';
     case 'auth/too-many-requests':
       return 'Too many attempts. Try again in a few minutes.';
+    case 'auth/operation-not-allowed':
+      return 'Google sign-in is not enabled for this Firebase project.';
+    case 'auth/unauthorized-domain':
+      return 'This domain is not authorized in Firebase Authentication.';
     case 'auth/popup-closed-by-user':
       return 'Google sign-in was closed before it finished.';
+    case 'auth/network-request-failed':
+      return 'Network error while signing in. Check the connection and try again.';
     default:
       return error?.message || 'Sign-in failed. Try again.';
   }
@@ -52,36 +75,85 @@ const getAuthErrorMessage = (error) => {
 
 const Login = () => {
   const navigate = useNavigate();
-  useEffect(() => {
-    const token = localStorage.getItem('authToken');
-    if (token) navigate('/');
-  }, [navigate]);
-
+  const authCompletedRef = useRef(false);
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [isRegistering, setIsRegistering] = useState(false);
   const [showPassword, setShowPassword] = useState(false);
   const [authError, setAuthError] = useState('');
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [isCheckingRedirect, setIsCheckingRedirect] = useState(true);
 
-  const finishAuth = async (user) => {
-    const token = await user.getIdToken();
-    localStorage.setItem('authToken', token);
-    navigate('/', { replace: true });
-  };
+  const finishAuth = useCallback(async (user) => {
+    if (!user || authCompletedRef.current) return;
+
+    authCompletedRef.current = true;
+
+    try {
+      const token = await user.getIdToken();
+      localStorage.setItem('authToken', token);
+      navigate('/', { replace: true });
+    } catch (error) {
+      authCompletedRef.current = false;
+      setAuthError(getAuthErrorMessage(error));
+    }
+  }, [navigate]);
+
+  useEffect(() => {
+    let isActive = true;
+
+    const unsubscribe = onAuthStateChanged(auth, (user) => {
+      if (isActive && user) {
+        finishAuth(user);
+      }
+    });
+
+    getGoogleRedirectResult()
+      .then((result) => {
+        if (isActive && result?.user) {
+          return finishAuth(result.user);
+        }
+
+        return null;
+      })
+      .catch((error) => {
+        console.error('Google redirect login failed', error);
+        if (isActive) {
+          setAuthError(getAuthErrorMessage(error));
+        }
+      })
+      .finally(() => {
+        if (isActive) {
+          setIsCheckingRedirect(false);
+        }
+      });
+
+    return () => {
+      isActive = false;
+      unsubscribe();
+    };
+  }, [finishAuth]);
 
   const loginWithGoogle = async () => {
-    if (isSubmitting) return;
-    const provider = new GoogleAuthProvider();
+    if (isSubmitting || isCheckingRedirect) return;
     setAuthError('');
     setIsSubmitting(true);
 
     try {
-      const result = await signInWithPopup(auth, provider);
-      await finishAuth(result.user);
+      await signInWithRedirect(auth, googleProvider);
     } catch (err) {
       console.error('Google login failed', err);
       setAuthError(getAuthErrorMessage(err));
+      setIsSubmitting(false);
+    }
+  };
+
+  const completeEmailAuth = async (authRequest) => {
+    try {
+      const userCredential = await authRequest;
+      await finishAuth(userCredential.user);
+    } catch (error) {
+      setAuthError(getAuthErrorMessage(error));
     } finally {
       setIsSubmitting(false);
     }
@@ -94,17 +166,11 @@ const Login = () => {
     setAuthError('');
     setIsSubmitting(true);
 
-    try {
-      const userCredential = isRegistering
-        ? await createUserWithEmailAndPassword(auth, email, password)
-        : await signInWithEmailAndPassword(auth, email, password);
+    const authRequest = isRegistering
+      ? createUserWithEmailAndPassword(auth, email, password)
+      : signInWithEmailAndPassword(auth, email, password);
 
-      await finishAuth(userCredential.user);
-    } catch (error) {
-      setAuthError(getAuthErrorMessage(error));
-    } finally {
-      setIsSubmitting(false);
-    }
+    await completeEmailAuth(authRequest);
   };
 
   return (
@@ -200,10 +266,12 @@ const Login = () => {
           <button
             type="submit"
             className="primary-button login-submit-button"
-            disabled={isSubmitting}
+            disabled={isSubmitting || isCheckingRedirect}
           >
             {isRegistering ? <UserPlus size={17} /> : <LogIn size={17} />}
-            {isSubmitting
+            {isCheckingRedirect
+              ? 'Checking sign-in...'
+              : isSubmitting
               ? 'Working...'
               : isRegistering
                 ? 'Create account'
@@ -216,10 +284,10 @@ const Login = () => {
             type="button"
             onClick={loginWithGoogle}
             className="google-button"
-            disabled={isSubmitting}
+            disabled={isSubmitting || isCheckingRedirect}
           >
             <Chrome size={17} />
-            Continue with Google
+            {isSubmitting ? 'Redirecting...' : 'Continue with Google'}
           </button>
 
           <button

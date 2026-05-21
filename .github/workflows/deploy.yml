@@ -10,10 +10,14 @@ concurrency:
   group: production-deploy
   cancel-in-progress: true
 
+permissions:
+  contents: read
+
 jobs:
   build:
     name: Build
     runs-on: ubuntu-latest
+    timeout-minutes: 15
 
     steps:
       - name: Checkout
@@ -40,7 +44,10 @@ jobs:
   deploy:
     name: Deploy to Lightsail
     runs-on: ubuntu-latest
+    environment: production
     needs: build
+    if: github.ref == 'refs/heads/main'
+    timeout-minutes: 15
 
     steps:
       - name: Configure SSH
@@ -52,17 +59,27 @@ jobs:
           test -n "$LIGHTSAIL_HOST"
           test -n "$LIGHTSAIL_USER"
           test -n "$LIGHTSAIL_SSH_KEY"
+
           mkdir -p ~/.ssh
           chmod 700 ~/.ssh
           printf '%s\n' "$LIGHTSAIL_SSH_KEY" > ~/.ssh/lightsail_key
           chmod 600 ~/.ssh/lightsail_key
           ssh-keyscan -H "$LIGHTSAIL_HOST" >> ~/.ssh/known_hosts
+          chmod 600 ~/.ssh/known_hosts
 
       - name: Pull and restart app
         env:
           LIGHTSAIL_HOST: ${{ secrets.LIGHTSAIL_HOST }}
+          LIGHTSAIL_PORT: ${{ secrets.LIGHTSAIL_PORT }}
           LIGHTSAIL_USER: ${{ secrets.LIGHTSAIL_USER }}
           LIGHTSAIL_APP_DIR: ${{ secrets.LIGHTSAIL_APP_DIR }}
         run: |
+          PORT="${LIGHTSAIL_PORT:-22}"
           APP_DIR="${LIGHTSAIL_APP_DIR:-/opt/e4square}"
-          ssh -i ~/.ssh/lightsail_key "$LIGHTSAIL_USER@$LIGHTSAIL_HOST" "cd '$APP_DIR' && git pull --ff-only origin main && docker compose up -d --build && docker image prune -f && docker compose ps"
+          ssh \
+            -i ~/.ssh/lightsail_key \
+            -p "$PORT" \
+            -o BatchMode=yes \
+            -o IdentitiesOnly=yes \
+            "$LIGHTSAIL_USER@$LIGHTSAIL_HOST" \
+            "cd '$APP_DIR' && git pull --ff-only origin main && docker compose up -d --build && docker image prune -f && docker compose ps && curl --fail --silent --show-error http://127.0.0.1:5000/health"
