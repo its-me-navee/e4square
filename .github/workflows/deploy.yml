@@ -82,4 +82,43 @@ jobs:
             -o BatchMode=yes \
             -o IdentitiesOnly=yes \
             "$LIGHTSAIL_USER@$LIGHTSAIL_HOST" \
-            "cd '$APP_DIR' && git pull --ff-only origin main && docker compose up -d --build && docker image prune -f && docker compose ps && curl --fail --silent --show-error http://127.0.0.1:5000/health"
+            bash -s -- "$APP_DIR" <<'REMOTE'
+          set -euo pipefail
+
+          APP_DIR="$1"
+          cd "$APP_DIR"
+
+          git pull --ff-only origin main
+          docker compose up -d --build
+          docker image prune -f
+          docker compose ps
+
+          app_healthy=false
+          for attempt in {1..30}; do
+            if curl --fail --silent --show-error http://127.0.0.1:5000/health; then
+              app_healthy=true
+              break
+            fi
+
+            echo "Waiting for app health check... attempt ${attempt}/30"
+            sleep 2
+          done
+
+          if [ "$app_healthy" != "true" ]; then
+            docker compose ps
+            docker compose logs --tail 120 app
+            exit 1
+          fi
+
+          if [ -f /etc/letsencrypt/live/e4sq.devcrew.dev/fullchain.pem ] && [ -f /etc/letsencrypt/live/e4sq.devcrew.dev/privkey.pem ]; then
+            sudo install -m 0644 deploy/nginx/e4square.conf /etc/nginx/sites-available/e4square
+            sudo rm -f /etc/nginx/sites-enabled/default
+            sudo ln -sf /etc/nginx/sites-available/e4square /etc/nginx/sites-enabled/e4square
+            sudo nginx -t
+            sudo systemctl reload nginx
+          else
+            echo "Skipping nginx HTTPS config because Let's Encrypt certificate files are not present yet."
+          fi
+
+          docker compose ps
+          REMOTE
