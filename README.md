@@ -20,7 +20,7 @@ E4Square is a full-stack chess platform built around live multiplayer, bot play,
 
 ## Stack
 
-React, chess.js, chessground/chessboard UI components, Socket.IO, Express, Firebase Auth, Firebase Admin, better-sqlite3, Stockfish WASM, Docker, and AWS EC2-ready deployment.
+React, chess.js, chessground/chessboard UI components, Socket.IO, Express, Firebase Auth, Firebase Admin, better-sqlite3, Stockfish WASM, and Docker.
 
 ## Repository Map
 
@@ -31,4 +31,5 @@ server/                  Express API, Socket.IO server, Firebase Admin, puzzle A
 server/data/             Local puzzle DB location, ignored by git
 scripts/                 Puzzle import utilities
 Dockerfile               Production container build
+docker-compose.yml       Single-instance production app container
 ```

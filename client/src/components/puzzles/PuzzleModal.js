@@ -4,10 +4,17 @@ import Chessground from '@react-chess/chessground';
 import { Check, Compass, Eye, Lightbulb, RotateCcw, Undo2, X } from 'lucide-react';
 import EvaluationBar from '../EvaluationBar';
 import EvalToggle from '../EvalToggle';
+import AnalysisDepthControl from '../AnalysisDepthControl';
+import EngineLinesOverlay from '../EngineLinesOverlay';
+import { useAnalysisDepth } from '../../hooks/useAnalysisDepth';
 import { getDests } from '../../utils/chessUtils';
 import { getViewportBoardSize } from '../../utils/boardSizing';
-import { createStockfishWorker, parseStockfishScore, terminateStockfishWorker } from '../../utils/stockfish';
-import { getPuzzleMoveLabel, getPuzzleMotif, getPuzzleRatingLabel } from '../../utils/puzzleLabels';
+import {
+  getPuzzleMoveLabel,
+  getPuzzleMotif,
+  getPuzzleRatingLabel,
+  getPuzzleTurnLabel,
+} from '../../utils/puzzleLabels';
 import { useEngineArrows } from '../../hooks/useEngineArrows';
 
 function uciParts(uci) {
@@ -31,11 +38,7 @@ const PuzzleModal = ({
   const handleMoveRef = useRef(() => {});
   const puzzleMissedRef = useRef(false);
   const puzzleSolvedRef = useRef(false);
-  const engineRef = useRef(null);
-  const evalTurnRef = useRef('w');
   const displayedFenRef = useRef(null);
-  const analysisShapesRef = useRef([]);
-  const analysisBrushesRef = useRef({});
   const [moveIndex, setMoveIndex] = useState(0);
   const [feedback, setFeedback] = useState({ type: 'idle', text: 'Find the best move.' });
   const [config, setConfig] = useState({});
@@ -44,9 +47,8 @@ const PuzzleModal = ({
   const [hint, setHint] = useState('');
   const [wrongAttempt, setWrongAttempt] = useState(null);
   const [evalEnabled, setEvalEnabled] = useState(false);
-  const [evaluation, setEvaluation] = useState(null);
-  const [evalLoading, setEvalLoading] = useState(false);
   const [positionPly, setPositionPly] = useState(0);
+  const [analysisDepth, setAnalysisDepth] = useAnalysisDepth();
 
   const updateBoard = useCallback(({ lastMove = [], wrongMove = [], displayFen = null, locked = false } = {}) => {
     const chess = chessRef.current;
@@ -56,12 +58,7 @@ const PuzzleModal = ({
     const tacticShapes = wrongMove.length === 2
       ? [{ orig: wrongMove[0], dest: wrongMove[1], brush: 'red' }]
       : [];
-    const autoShapes = [
-      ...analysisShapesRef.current,
-      ...tacticShapes,
-    ];
     const boardFen = displayFen || chess.fen();
-    const analysisMode = puzzleSolvedRef.current;
     displayedFenRef.current = boardFen;
 
     setConfig({
@@ -71,9 +68,9 @@ const PuzzleModal = ({
       lastMove,
       coordinates: true,
       movable: {
-        free: analysisMode,
+        free: false,
         color: locked ? null : turnColor,
-        dests: locked ? new Map() : analysisMode ? undefined : getDests(chess),
+        dests: locked ? new Map() : getDests(chess),
         showDests: true,
         events: {
           after: (from, to) => {
@@ -92,7 +89,7 @@ const PuzzleModal = ({
       drawable: {
         enabled: false,
         visible: true,
-        autoShapes,
+        autoShapes: tacticShapes,
         brushes: {
           red: {
             key: 'red',
@@ -100,7 +97,6 @@ const PuzzleModal = ({
             opacity: 0.9,
             lineWidth: 10,
           },
-          ...analysisBrushesRef.current,
         },
       },
       check: chess.inCheck() ? turnColor : false,
@@ -111,13 +107,21 @@ const PuzzleModal = ({
     });
   }, [puzzle]);
 
-  const analysisFen = displayedFenRef.current || chessRef.current?.fen() || puzzle?.fen || '';
+  const puzzleMoveCount = puzzle?.moves?.length || 0;
+  const puzzleSolved = Boolean(puzzle && puzzleMoveCount > 0 && moveIndex >= puzzleMoveCount);
+  const puzzleEvalEnabled = evalEnabled && puzzleSolved;
+  const analysisFen = puzzleEvalEnabled
+    ? displayedFenRef.current || chessRef.current?.fen() || puzzle?.fen || ''
+    : '';
   const {
-    shapes: analysisShapes,
-    brushes: analysisBrushes,
+    lines: analysisLines,
+    evaluation,
+    loading: evalLoading,
+    unavailableReason: analysisUnavailableReason,
   } = useEngineArrows({
     fen: analysisFen,
-    enabled: evalEnabled,
+    enabled: puzzleEvalEnabled,
+    depth: analysisDepth,
   });
 
   const registerPuzzleMiss = useCallback((reason) => {
@@ -131,17 +135,6 @@ const PuzzleModal = ({
     puzzleSolvedRef.current = true;
     onPuzzleSolved?.(puzzle.id, { perfect: !puzzleMissedRef.current });
   }, [onPuzzleSolved, puzzle]);
-
-  const evaluatePosition = useCallback(() => {
-    if (!engineRef.current || !evalEnabled || !chessRef.current) return;
-
-    const boardFen = displayedFenRef.current || chessRef.current.fen();
-    setEvalLoading(true);
-    evalTurnRef.current = boardFen.split(' ')[1] || chessRef.current.turn();
-    engineRef.current.postMessage('stop');
-    engineRef.current.postMessage(`position fen ${boardFen}`);
-    engineRef.current.postMessage('go depth 6');
-  }, [evalEnabled]);
 
   const handleMove = useCallback((from, to) => {
     const chess = chessRef.current;
@@ -170,9 +163,6 @@ const PuzzleModal = ({
           setPositionPly(chess.history().length);
           setFeedback({ type: 'idle', text: 'Analysis mode. Eval follows the current board.' });
           updateBoard({ lastMove: [analysisMove.from, analysisMove.to] });
-          if (evalEnabled) {
-            window.setTimeout(evaluatePosition, 80);
-          }
         } else {
           updateBoard();
         }
@@ -209,9 +199,6 @@ const PuzzleModal = ({
       setFeedback({ type: 'error', text: 'That move misses the tactic.' });
       setPositionPly(chess.history().length);
       updateBoard({ wrongMove: [from, to], displayFen: attemptedFen, locked: true });
-      if (evalEnabled) {
-        window.setTimeout(evaluatePosition, 80);
-      }
       return;
     }
 
@@ -243,10 +230,7 @@ const PuzzleModal = ({
     }
 
     updateBoard({ lastMove });
-    if (evalEnabled) {
-      window.setTimeout(evaluatePosition, 80);
-    }
-  }, [evalEnabled, evaluatePosition, puzzle, registerPuzzleMiss, registerPuzzleSolved, updateBoard, wrongAttempt]);
+  }, [puzzle, registerPuzzleMiss, registerPuzzleSolved, updateBoard, wrongAttempt]);
 
   const retryWrongMove = useCallback(() => {
     setWrongAttempt(null);
@@ -254,10 +238,7 @@ const PuzzleModal = ({
     setFeedback({ type: 'idle', text: 'Try another forcing move.' });
     setPositionPly(chessRef.current?.history().length || 0);
     updateBoard();
-    if (evalEnabled) {
-      window.setTimeout(evaluatePosition, 80);
-    }
-  }, [evalEnabled, evaluatePosition, updateBoard]);
+  }, [updateBoard]);
 
   const enterAnalysisMode = () => {
     if (!puzzleSolvedRef.current) return;
@@ -267,9 +248,6 @@ const PuzzleModal = ({
     setFeedback({ type: 'idle', text: 'Analysis mode. Try any legal move.' });
     setPositionPly(chessRef.current?.history().length || 0);
     updateBoard();
-    if (evalEnabled) {
-      window.setTimeout(evaluatePosition, 80);
-    }
   };
 
   const moveBack = () => {
@@ -288,9 +266,6 @@ const PuzzleModal = ({
     setFeedback({ type: 'idle', text: 'Analysis mode. Try another line.' });
     setPositionPly(chess.history().length);
     updateBoard();
-    if (evalEnabled) {
-      window.setTimeout(evaluatePosition, 80);
-    }
   };
 
   const showHint = () => {
@@ -311,9 +286,6 @@ const PuzzleModal = ({
     }
     setHint(`${from}-${to}`);
     updateBoard({ wrongMove: [from, to] });
-    if (evalEnabled) {
-      window.setTimeout(evaluatePosition, 80);
-    }
   };
 
   const resetPuzzle = () => {
@@ -325,34 +297,15 @@ const PuzzleModal = ({
     setMoveIndex(0);
     setMistakes(0);
     setWrongAttempt(null);
-    setEvaluation(null);
-    setEvalLoading(false);
     setPositionPly(0);
     setHint('');
     setFeedback({ type: 'idle', text: 'Find the best move.' });
     updateBoard();
-    if (evalEnabled) {
-      window.setTimeout(evaluatePosition, 80);
-    }
   };
 
   useEffect(() => {
     handleMoveRef.current = handleMove;
   }, [handleMove]);
-
-  useEffect(() => {
-    analysisShapesRef.current = analysisShapes;
-    analysisBrushesRef.current = analysisBrushes;
-
-    if (!puzzle || !chessRef.current) return;
-
-    if (wrongAttempt) {
-      updateBoard({ wrongMove: wrongAttempt.move, displayFen: wrongAttempt.fen, locked: true });
-      return;
-    }
-
-    updateBoard();
-  }, [analysisBrushes, analysisShapes, puzzle, updateBoard, wrongAttempt]);
 
   useEffect(() => {
     if (!puzzle) return undefined;
@@ -362,67 +315,10 @@ const PuzzleModal = ({
   }, [puzzle]);
 
   useEffect(() => {
-    const handleVisibilityChange = () => {
-      if (document.hidden) {
-        setEvalEnabled(false);
-      }
-    };
-
-    document.addEventListener('visibilitychange', handleVisibilityChange);
-    return () => document.removeEventListener('visibilitychange', handleVisibilityChange);
-  }, []);
-
-  useEffect(() => {
-    if (!evalEnabled || !puzzle) {
-      terminateStockfishWorker(engineRef.current);
-      engineRef.current = null;
-      setEvaluation(null);
-      setEvalLoading(false);
-      return undefined;
+    if (!puzzleSolved && evalEnabled) {
+      setEvalEnabled(false);
     }
-
-    let cancelled = false;
-    let startTimer = null;
-    createStockfishWorker({ liteOnly: true })
-      .then(({ worker }) => {
-        if (cancelled) {
-          terminateStockfishWorker(worker);
-          return;
-        }
-
-        engineRef.current = worker;
-        worker.postMessage('uci');
-        worker.postMessage('isready');
-        worker.onmessage = (event) => {
-          const line = event.data;
-          if (line.startsWith('bestmove')) {
-            setEvalLoading(false);
-            return;
-          }
-
-          if (line.includes('score cp') || line.includes('score mate')) {
-            const score = parseStockfishScore(line, evalTurnRef.current);
-            if (score) setEvaluation(score);
-          }
-        };
-
-        startTimer = window.setTimeout(evaluatePosition, 150);
-      })
-      .catch((err) => {
-        console.warn(err.message);
-        if (!cancelled) {
-          setEvalEnabled(false);
-          setEvalLoading(false);
-        }
-      });
-
-    return () => {
-      cancelled = true;
-      if (startTimer) window.clearTimeout(startTimer);
-      terminateStockfishWorker(engineRef.current);
-      engineRef.current = null;
-    };
-  }, [evalEnabled, evaluatePosition, puzzle]);
+  }, [evalEnabled, puzzleSolved]);
 
   useEffect(() => {
     if (!puzzle) return;
@@ -434,8 +330,6 @@ const PuzzleModal = ({
     setMoveIndex(0);
     setMistakes(0);
     setWrongAttempt(null);
-    setEvaluation(null);
-    setEvalLoading(false);
     setPositionPly(0);
     setHint('');
     setFeedback({ type: 'idle', text: 'Find the best move.' });
@@ -460,25 +354,31 @@ const PuzzleModal = ({
 
   if (!puzzle) return null;
 
-  const solved = moveIndex >= (puzzle.moves?.length || 0);
+  const solved = puzzleSolved;
   const totalMoves = Math.ceil((puzzle.moves?.length || 0) / 2);
   const solvedMoves = Math.min(Math.ceil(moveIndex / 2), totalMoves);
   const title = getPuzzleMotif(puzzle.themes);
-  const evalDisplay = evalEnabled ? evaluation?.display || (evalLoading ? '...' : '0.0') : '';
+  const evalDisplay = puzzleEvalEnabled
+    ? analysisUnavailableReason ? 'paused' : evaluation?.display || (evalLoading ? '...' : '0.0')
+    : '';
   const canExplore = solved && !wrongAttempt;
   const canMoveBack = (solved && positionPly > 0) || Boolean(wrongAttempt);
+  const boardOrientation = puzzle?.fen?.split(' ')[1] === 'b' ? 'black' : 'white';
 
   return (
     <div className="puzzle-modal-overlay">
       <div className="puzzle-modal">
         <div className="puzzle-modal-board">
           <div className="board-with-eval puzzle-board-with-eval">
-            {evalEnabled && (
+            {puzzleEvalEnabled ? (
               <EvaluationBar
                 evaluation={evaluation}
                 enabled={evalEnabled}
                 loading={evalLoading}
+                statusLabel={analysisUnavailableReason ? 'paused' : ''}
               />
+            ) : (
+              <div className="eval-bar eval-bar-placeholder" aria-hidden="true" />
             )}
             <div className="board-frame puzzle-board-frame" style={{ '--board-size': `${boardSize}px` }}>
               <div className="board-surface">
@@ -487,6 +387,11 @@ const PuzzleModal = ({
                   height={boardSize}
                   config={config}
                   contained={false}
+                />
+                <EngineLinesOverlay
+                  lines={analysisLines}
+                  orientation={boardOrientation}
+                  enabled={puzzleEvalEnabled}
                 />
               </div>
             </div>
@@ -497,6 +402,7 @@ const PuzzleModal = ({
           <div>
             <h2 className="puzzle-modal-title">{title}</h2>
             <div className="puzzle-modal-meta">
+              <span className="puzzle-side-to-move">{getPuzzleTurnLabel(puzzle.fen)}</span>
               <span>{getPuzzleRatingLabel(puzzle.rating)}</span>
               <span>{solvedMoves}/{totalMoves} · {getPuzzleMoveLabel(puzzle.moves)}</span>
               <span>{mistakes} mistakes</span>
@@ -566,12 +472,21 @@ const PuzzleModal = ({
                 Try Again
               </button>
             )}
-            <EvalToggle
-              enabled={evalEnabled}
-              onChange={setEvalEnabled}
-              value={evalDisplay}
-              className="puzzle-eval-toggle"
-            />
+            {solved && (
+              <EvalToggle
+                enabled={evalEnabled}
+                onChange={setEvalEnabled}
+                value={evalDisplay}
+                className="puzzle-eval-toggle"
+              />
+            )}
+            {solved && puzzleEvalEnabled && (
+              <AnalysisDepthControl
+                depth={analysisDepth}
+                onChange={setAnalysisDepth}
+                className="puzzle-analysis-depth"
+              />
+            )}
           </div>
 
           <div className="puzzle-modal-actions">

@@ -6,8 +6,11 @@ import { Activity, ArrowLeft, ChevronLeft, ChevronRight, Clock3, Flag, Radio, Ro
 
 import Header from '../components/Header';
 import ResultCelebration from '../components/ResultCelebration';
+import AnalysisDepthControl from '../components/AnalysisDepthControl';
+import EngineLinesOverlay from '../components/EngineLinesOverlay';
 
 import { useAuthRedirect } from '../hooks/useAuthRedirect';
+import { useAnalysisDepth } from '../hooks/useAnalysisDepth';
 import { useGameNavigationBlocker } from '../hooks/useGameNavigationBlocker';
 import { useMultiplayerGame } from '../hooks/useMultiplayerGame';
 import { useMoveNavigation } from '../hooks/useMoveNavigation';
@@ -61,12 +64,13 @@ const ChessBoard = () => {
   const resigningRef = useRef(false);
   const closeAfterResultRef = useRef(false);
   const analysisEnabled = resultAnalysisEnabled && gameFinished;
+  const [analysisDepth, setAnalysisDepth] = useAnalysisDepth();
   const {
-    shapes: analysisShapes,
-    brushes: analysisBrushes,
+    lines: analysisLines,
   } = useEngineArrows({
     fen: analysisEnabled ? chessRef.current.fen() : '',
     enabled: analysisEnabled,
+    depth: analysisDepth,
   });
 
   // AUTH REDIRECT
@@ -88,8 +92,7 @@ const ChessBoard = () => {
     setGameStatus,
     gameId,
     gameFinished,
-    analysisShapes,
-    analysisBrushes
+    analysisMode: analysisEnabled,
   });
 
   // MULTIPLAYER SOCKET HOOK
@@ -185,7 +188,7 @@ const ChessBoard = () => {
 
   useEffect(() => {
     if (gameStarted || gameFinished) updateConfig();
-  }, [analysisShapes, gameFinished, gameStarted, updateConfig]);
+  }, [analysisEnabled, gameFinished, gameStarted, updateConfig]);
 
   if (isLoading) {
     return (
@@ -261,12 +264,14 @@ const ChessBoard = () => {
   return (
     <div className="chess-board-container">
       <Header />
-      <ResultCelebration
-        key={gameStatus}
-        tone={resultTone}
-        message={gameStatus}
-        onAnalyze={gameFinished ? startResultAnalysis : undefined}
-      />
+      {!resultAnalysisEnabled && (
+        <ResultCelebration
+          key={gameStatus}
+          tone={resultTone}
+          message={gameStatus}
+          onAnalyze={gameFinished ? startResultAnalysis : undefined}
+        />
+      )}
 
       <div className="game-topbar">
         <button
@@ -311,7 +316,7 @@ const ChessBoard = () => {
           <div className="board-stack">
             {renderClock(topSide)}
             <div
-              className={`board-frame game-board-frame ${resultTone ? `result-board-${resultTone}` : ''}`}
+              className={`board-frame game-board-frame ${resultTone && !resultAnalysisEnabled ? `result-board-${resultTone}` : ''}`}
               style={{ '--board-size': `${boardSize}px` }}
             >
               <div className="board-surface">
@@ -320,6 +325,11 @@ const ChessBoard = () => {
                   height={boardSize}
                   config={config}
                   contained={false}
+                />
+                <EngineLinesOverlay
+                  lines={analysisLines}
+                  orientation={bottomSide}
+                  enabled={analysisEnabled}
                 />
               </div>
             </div>
@@ -343,6 +353,13 @@ const ChessBoard = () => {
                   <Activity size={16} />
                   Analyze
                 </button>
+                {analysisEnabled && (
+                  <AnalysisDepthControl
+                    depth={analysisDepth}
+                    onChange={setAnalysisDepth}
+                    className="game-analysis-depth"
+                  />
+                )}
                 <button
                   type="button"
                   className="inline-status-button"

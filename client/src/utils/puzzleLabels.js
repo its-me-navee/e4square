@@ -35,3 +35,8 @@ export const getPuzzleRatingLabel = (rating) => {
 
   return 'Training position';
 };
+
+export const getPuzzleTurnLabel = (fen = '') => {
+  const side = String(fen).split(/\s+/)[1];
+  return side === 'b' ? 'Black to move' : 'White to move';
+};

@@ -7,12 +7,15 @@ import { Activity, Bot, Flag, Play, Undo2 } from 'lucide-react';
 import Header from '../components/Header';
 import EvaluationBar from '../components/EvaluationBar';
 import EvalToggle from '../components/EvalToggle';
+import AnalysisDepthControl from '../components/AnalysisDepthControl';
+import EngineLinesOverlay from '../components/EngineLinesOverlay';
 import ResultCelebration from '../components/ResultCelebration';
 import { useBotUpdateConfig } from '../hooks/useBotUpdateConfig';
+import { useAnalysisDepth } from '../hooks/useAnalysisDepth';
 import { useGameNavigationBlocker } from '../hooks/useGameNavigationBlocker';
 import { evaluateGameStatus } from '../utils/gameStatus';
 import { getViewportBoardSize } from '../utils/boardSizing';
-import { createStockfishWorker, parseStockfishScore, terminateStockfishWorker } from '../utils/stockfish';
+import { createStockfishWorker, StockfishBusyError, terminateStockfishWorker } from '../utils/stockfish';
 import { getResultTone } from '../utils/resultTone';
 import { useEngineArrows } from '../hooks/useEngineArrows';
 
@@ -24,10 +27,6 @@ const BotGame = () => {
   const navigate = useNavigate();
   const chessRef = useRef(new Chess());
   const engineRef = useRef(null);
-  const evalEngineRef = useRef(null);
-  const evalTurnRef = useRef('w');
-  const evalEnabledRef = useRef(false);
-  const evaluatePositionRef = useRef(() => {});
   const updateConfigRef = useRef(() => {});
   const pendingBotMoveRef = useRef(false);
   const botSearchActiveRef = useRef(false);
@@ -40,10 +39,9 @@ const BotGame = () => {
   const [playerSide, setPlayerSide] = useState('white');
   const [config, setConfig] = useState({});
   const [moveHistory, setMoveHistory] = useState([]);
-  const [evaluation, setEvaluation] = useState(null);
   const [evalEnabled, setEvalEnabled] = useState(false);
-  const [evalLoading, setEvalLoading] = useState(false);
   const [difficulty, setDifficulty] = useState(5);
+  const [engineBlocked, setEngineBlocked] = useState(false);
   const [gameStatus, setGameStatus] = useState('');
   const [boardSize, setBoardSize] = useState(520);
   const [gameStarted, setGameStarted] = useState(false);
@@ -52,20 +50,27 @@ const BotGame = () => {
   const [pendingBlocker, setPendingBlocker] = useState(null);
   const [resultAnalysisEnabled, setResultAnalysisEnabled] = useState(false);
   const [engineWakeKey, setEngineWakeKey] = useState(0);
+  const [analysisDepth, setAnalysisDepth] = useAnalysisDepth();
 
   const gameFinished = Boolean(gameStatus);
   const hasActiveBotGame = gameStarted && showBoard && !gameFinished;
   const canTakeBack = showBoard && moveHistory.length > 0;
   const resultTone = getResultTone(gameStatus, playerSide);
-  const evalDisplay = evalEnabled ? evaluation?.display || (evalLoading ? '...' : '0.0') : '';
   const analysisEnabled = showBoard && evalEnabled;
+  const analysisMode = resultAnalysisEnabled && gameFinished;
   const {
-    shapes: analysisShapes,
-    brushes: analysisBrushes,
+    lines: analysisLines,
+    evaluation,
+    loading: evalLoading,
+    unavailableReason: analysisUnavailableReason,
   } = useEngineArrows({
     fen: analysisEnabled ? chessRef.current.fen() : '',
     enabled: analysisEnabled,
+    depth: analysisDepth,
   });
+  const evalDisplay = evalEnabled
+    ? analysisUnavailableReason ? 'paused' : evaluation?.display || (evalLoading ? '...' : '0.0')
+    : '';
 
   useEffect(() => {
     document.body.classList.add('board-viewport-lock');
@@ -102,10 +107,6 @@ const BotGame = () => {
   useGameNavigationBlocker(hasActiveBotGame, handleBlockedNavigation);
 
   useEffect(() => {
-    evalEnabledRef.current = evalEnabled;
-  }, [evalEnabled]);
-
-  useEffect(() => {
     showBoardRef.current = showBoard;
   }, [showBoard]);
 
@@ -120,7 +121,6 @@ const BotGame = () => {
         pendingBotMoveRef.current = false;
         terminateStockfishWorker(engineRef.current);
         engineRef.current = null;
-        setEvalEnabled(false);
         return;
       }
 
@@ -166,8 +166,11 @@ const BotGame = () => {
 
     let cancelled = false;
     let workerRef = null;
+    let retryTimer = null;
 
-    createStockfishWorker()
+    setEngineBlocked(false);
+
+    createStockfishWorker({ scope: 'play' })
       .then(({ worker, path }) => {
         if (cancelled) {
           terminateStockfishWorker(worker);
@@ -178,7 +181,8 @@ const BotGame = () => {
         engineRef.current = worker;
         workerRef = worker;
 
-        worker.postMessage('uci');
+        worker.postMessage('setoption name Threads value 1');
+        worker.postMessage('setoption name Hash value 32');
         worker.postMessage(`setoption name Skill Level value ${difficulty}`);
         worker.postMessage('isready');
 
@@ -195,8 +199,9 @@ const BotGame = () => {
               return;
             }
 
+            let botMove = null;
             try {
-              chessRef.current.move({
+              botMove = chessRef.current.move({
                 from: move.slice(0, 2),
                 to: move.slice(2, 4),
                 promotion: move.slice(4, 5) || 'q',
@@ -206,14 +211,13 @@ const BotGame = () => {
               return;
             }
 
-            setMoveHistory([...chessRef.current.history()]);
+            if (!botMove) return;
+
+            setMoveHistory((history) => [...history, { move: botMove, fen: chessRef.current.fen() }]);
             updateConfigRef.current();
 
             const status = evaluateGameStatus(chessRef.current);
             if (status) setGameStatus(status);
-            if (evalEnabledRef.current) {
-              setTimeout(() => evaluatePositionRef.current(), 100);
-            }
           }
         };
 
@@ -225,6 +229,13 @@ const BotGame = () => {
       .catch((err) => {
         if (cancelled) return;
         console.error(err.message);
+        if (err instanceof StockfishBusyError) {
+          setEngineBlocked(true);
+          retryTimer = window.setTimeout(() => {
+            if (!cancelled) setEngineWakeKey((key) => key + 1);
+          }, 5500);
+          return;
+        }
         alert('Could not load chess engine. Please try again later.');
       });
 
@@ -235,6 +246,7 @@ const BotGame = () => {
       if (engineRef.current === workerRef) {
         engineRef.current = null;
       }
+      if (retryTimer) window.clearTimeout(retryTimer);
       terminateStockfishWorker(workerRef);
     };
   }, [difficulty, engineWakeKey, gameFinished, sendBotSearch, showBoard]);
@@ -250,79 +262,6 @@ const BotGame = () => {
     sendBotSearch(engineRef.current);
   }, [sendBotSearch]);
 
-  const evaluatePosition = useCallback(() => {
-    if (!evalEngineRef.current || !evalEnabled) return;
-    const chess = chessRef.current;
-    setEvalLoading(true);
-    evalTurnRef.current = chess.turn();
-    evalEngineRef.current.postMessage('stop');
-    evalEngineRef.current.postMessage(`position fen ${chess.fen()}`);
-    evalEngineRef.current.postMessage('go depth 6');
-  }, [evalEnabled]);
-
-  useEffect(() => {
-    evaluatePositionRef.current = evaluatePosition;
-  }, [evaluatePosition]);
-
-  useEffect(() => {
-    if (!evalEnabled) {
-      terminateStockfishWorker(evalEngineRef.current);
-      evalEngineRef.current = null;
-      setEvaluation(null);
-      setEvalLoading(false);
-      return undefined;
-    }
-
-    let workerRef = null;
-    let cancelled = false;
-
-    createStockfishWorker({ liteOnly: true })
-      .then(({ worker }) => {
-        if (cancelled) {
-          terminateStockfishWorker(worker);
-          return;
-        }
-
-        workerRef = worker;
-        evalEngineRef.current = worker;
-        worker.postMessage('uci');
-        worker.postMessage('isready');
-        worker.onmessage = (event) => {
-          const line = event.data;
-          if (line.startsWith('bestmove')) {
-            setEvalLoading(false);
-            return;
-          }
-
-          if (line.includes('score cp') || line.includes('score mate')) {
-            const score = parseStockfishScore(line, evalTurnRef.current);
-            if (score && evalEnabledRef.current) {
-              setEvaluation(score);
-            }
-          }
-        };
-
-        if (showBoard) {
-          window.setTimeout(() => evaluatePositionRef.current(), 120);
-        }
-      })
-      .catch((err) => {
-        console.warn(err.message);
-        if (!cancelled) {
-          setEvalEnabled(false);
-          setEvalLoading(false);
-        }
-      });
-
-    return () => {
-      cancelled = true;
-      terminateStockfishWorker(workerRef);
-      if (evalEngineRef.current === workerRef) {
-        evalEngineRef.current = null;
-      }
-    };
-  }, [evalEnabled, showBoard]);
-
   const takeBackMove = useCallback(() => {
     const chess = chessRef.current;
     const historyLength = chess.history().length;
@@ -332,6 +271,18 @@ const BotGame = () => {
     pendingBotMoveRef.current = false;
     engineRef.current?.postMessage('stop');
 
+    if (resultAnalysisEnabled) {
+      const undoneMove = chess.undo();
+      if (!undoneMove) return;
+
+      setMoveHistory((history) => history.slice(0, -1));
+      closeAfterResultRef.current = false;
+      window.setTimeout(() => {
+        updateConfigRef.current();
+      }, 0);
+      return;
+    }
+
     const currentTurn = chess.turn() === 'w' ? 'white' : 'black';
     const undoTarget = currentTurn === playerSide ? 2 : 1;
     const undoCount = Math.min(undoTarget, historyLength);
@@ -340,19 +291,13 @@ const BotGame = () => {
       chess.undo();
     }
 
-    const nextHistory = chess.history();
-    setMoveHistory(nextHistory);
+    setMoveHistory((history) => history.slice(0, Math.max(0, history.length - undoCount)));
     setGameStatus('');
     closeAfterResultRef.current = false;
-    setEvaluation(null);
-    setEvalLoading(false);
     window.setTimeout(() => {
       updateConfigRef.current();
-      if (evalEnabledRef.current) {
-        evaluatePositionRef.current();
-      }
     }, 0);
-  }, [playerSide]);
+  }, [playerSide, resultAnalysisEnabled]);
 
   const resignBotGame = useCallback(({ closeAfterResult = false } = {}) => {
     botSearchActiveRef.current = false;
@@ -363,7 +308,6 @@ const BotGame = () => {
     setEvalEnabled(false);
     const winner = playerSide === 'white' ? 'Black' : 'White';
     setGameStatus(`${winner} won by resignation`);
-    setEvalLoading(false);
     window.setTimeout(() => updateConfigRef.current(), 0);
   }, [playerSide]);
 
@@ -430,7 +374,6 @@ const BotGame = () => {
     setResultAnalysisEnabled(true);
     window.setTimeout(() => {
       updateConfigRef.current();
-      evaluatePositionRef.current();
     }, 80);
   }, [gameStatus]);
 
@@ -448,17 +391,18 @@ const BotGame = () => {
     setTimeout(makeBotMove, 100);
   }, [makeBotMove]);
 
+  const ignoreCurrentMoveIndex = useCallback(() => {}, []);
+
   const updateConfig = useBotUpdateConfig({
     chessRef,
     playerSide,
     setConfig,
     setMoveHistory,
-    setCurrentMoveIndex: () => {}, // Optional: implement if needed
+    setCurrentMoveIndex: ignoreCurrentMoveIndex,
     setGameStatus,
     onPlayerMove: handlePlayerMove,
     gameFinished,
-    analysisShapes,
-    analysisBrushes,
+    analysisMode,
   });
 
   useEffect(() => {
@@ -471,16 +415,7 @@ const BotGame = () => {
 
   useEffect(() => {
     if (showBoard) updateConfig();
-  }, [analysisShapes, showBoard, updateConfig]);
-
-  useEffect(() => {
-    if (evalEnabled && showBoard) {
-      evaluatePosition();
-    } else if (!evalEnabled) {
-      setEvaluation(null);
-      setEvalLoading(false);
-    }
-  }, [evalEnabled, evaluatePosition, showBoard]);
+  }, [analysisMode, showBoard, updateConfig]);
 
   // Handle responsive board sizing
   useEffect(() => {
@@ -501,12 +436,14 @@ const BotGame = () => {
   return (
     <div className="bot-game-container">
       <Header />
-      <ResultCelebration
-        key={gameStatus}
-        tone={resultTone}
-        message={gameStatus}
-        onAnalyze={gameStatus ? startResultAnalysis : undefined}
-      />
+      {!resultAnalysisEnabled && (
+        <ResultCelebration
+          key={gameStatus}
+          tone={resultTone}
+          message={gameStatus}
+          onAnalyze={gameStatus ? startResultAnalysis : undefined}
+        />
+      )}
 
       <div className="bot-game-content">
         <div className="bot-game-heading">
@@ -575,15 +512,18 @@ const BotGame = () => {
 
         {showBoard && (
           <div className="board-with-eval">
-            {evalEnabled && (
+            {evalEnabled ? (
               <EvaluationBar
                 evaluation={evaluation}
                 enabled={evalEnabled}
                 loading={evalLoading}
+                statusLabel={analysisUnavailableReason ? 'paused' : ''}
               />
+            ) : (
+              <div className="eval-bar eval-bar-placeholder" aria-hidden="true" />
             )}
             <div
-              className={`board-frame bot-board-frame ${resultTone ? `result-board-${resultTone}` : ''}`}
+              className={`board-frame bot-board-frame ${resultTone && !resultAnalysisEnabled ? `result-board-${resultTone}` : ''}`}
               style={{ '--board-size': `${boardSize}px` }}
             >
               <div className="board-surface">
@@ -592,6 +532,11 @@ const BotGame = () => {
                   height={boardSize}
                   config={config}
                   contained={false}
+                />
+                <EngineLinesOverlay
+                  lines={analysisLines}
+                  orientation={playerSide}
+                  enabled={analysisEnabled}
                 />
               </div>
             </div>
@@ -606,6 +551,20 @@ const BotGame = () => {
               value={evalDisplay}
               className="bot-board-eval-toggle"
             />
+          )}
+
+          {showBoard && evalEnabled && (
+            <AnalysisDepthControl
+              depth={analysisDepth}
+              onChange={setAnalysisDepth}
+              className="bot-analysis-depth"
+            />
+          )}
+
+          {engineBlocked && (
+            <span className="engine-guard-status">
+              Stockfish is active in another tab
+            </span>
           )}
 
           {showBoard && gameFinished && (

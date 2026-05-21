@@ -3,27 +3,48 @@
 .DS_Store
 **/.DS_Store
 setup.md
+DEPLOYMENT.md
+DEPLOYMENT.local.md
 
+# Environment and secrets
 .env
 .env.*
 client/.env
 client/.env.*
 server/.env
 server/.env.*
+*.pem
+*.key
+*.p12
+*.crt
+*.csr
+id_rsa*
+id_ed25519*
+deploy/secrets
+deploy/certs
+deploy/*.local.*
 
+# Dependencies and local tooling
 .venv
 __pycache__
 **/__pycache__
 **/node_modules
+
+# Build output, caches, and logs
 client/build
 server/client-build
-server/data/*.db
-server/data/*.db-*
-server/data/*.sqlite
-server/data/*.parquet
-server/data/*.parqet
+build
+dist
+.cache
+.eslintcache
+.parcel-cache
+.turbo
 coverage
 *.log
 npm-debug.log*
 yarn-debug.log*
 yarn-error.log*
+
+# Generated puzzle data. The DB is mounted from the server disk at runtime.
+server/data/*
+!server/data/.gitkeep

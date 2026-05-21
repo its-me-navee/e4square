@@ -11,10 +11,10 @@ function getWhitePercent(evaluation) {
   return Math.round(50 + pawns * 5);
 }
 
-const EvaluationBar = ({ evaluation, enabled, loading }) => {
+const EvaluationBar = ({ evaluation, enabled, loading, statusLabel = '' }) => {
   const whitePercent = getWhitePercent(evaluation);
   const label = enabled
-    ? evaluation?.display || (loading ? '...' : '0.0')
+    ? statusLabel || evaluation?.display || (loading ? '...' : '0.0')
     : 'Off';
 
   return (

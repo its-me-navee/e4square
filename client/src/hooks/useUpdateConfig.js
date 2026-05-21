@@ -13,14 +13,15 @@ export const useUpdateConfig = ({
   setGameStatus,
   gameId,
   gameFinished = false,
-  analysisShapes = [],
-  analysisBrushes = {}
+  analysisMode = false,
 }) => {
   const updateConfig = useCallback(() => {
     const chess = chessRef.current;
 
     const currentTurn = chess.turn() === 'w' ? 'white' : 'black';
     const isPlayersTurn = playerSide === currentTurn;
+    const canMove = analysisMode || (isPlayersTurn && gameStarted && !gameFinished);
+    const movableColor = analysisMode ? currentTurn : playerSide;
     const settings = getSettings();
 
     const history = chess.history({ verbose: true });
@@ -32,15 +33,15 @@ export const useUpdateConfig = ({
       turnColor: currentTurn,
       orientation: playerSide || 'white',
       lastMove,
-            movable: {
-        color: isPlayersTurn && gameStarted && !gameFinished ? playerSide : null,
-        dests: isPlayersTurn && gameStarted && !gameFinished ? getDests(chess) : new Map(),
+      movable: {
+        color: canMove ? movableColor : null,
+        dests: canMove ? getDests(chess) : new Map(),
         showDests: true,
         free: false,
         events: {
           after: (from, to) => {
             console.log(`🎯 Move attempted: ${from} -> ${to}, Player: ${playerSide}, Turn: ${currentTurn}, GameStarted: ${gameStarted}`);
-            if (!isPlayersTurn || !gameStarted || gameFinished) {
+            if (!analysisMode && (!isPlayersTurn || !gameStarted || gameFinished)) {
               console.log('❌ Not your turn or game not started');
               return;
             }
@@ -58,10 +59,12 @@ export const useUpdateConfig = ({
               const move = chess.move({ from, to, promotion });
               if (move) {
                 const newMove = { move, fen: chess.fen() };
-                setMoveHistory(prev => [...prev, newMove]);
+                setMoveHistory((prev) => [...prev, newMove]);
                 setCurrentMoveIndex(null);
                 // Pass the move that was just made to updateConfig
                 updateConfig([from, to]);
+                if (analysisMode) return;
+
                 const status = evaluateGameStatus(chess);
                 setGameStatus(status);
                 // Send the move object that server expects
@@ -78,11 +81,11 @@ export const useUpdateConfig = ({
         }
       },
       draggable: {
-        enabled: isPlayersTurn && gameStarted && !gameFinished,
+        enabled: canMove,
         deleteOnDropOff: false
       },
       premovable: {
-        enabled: settings.premove !== 'none' && gameStarted && !gameFinished,
+        enabled: settings.premove !== 'none' && gameStarted && !gameFinished && !analysisMode,
         castle: true,
         showDests: true
       },
@@ -93,8 +96,8 @@ export const useUpdateConfig = ({
       drawable: {
         enabled: false,
         visible: true,
-        autoShapes: analysisShapes,
-        brushes: analysisBrushes,
+        autoShapes: [],
+        brushes: {},
       },
       check: chess.inCheck()
         ? (chess.turn() === 'w' ? 'white' : 'black')
@@ -114,8 +117,7 @@ export const useUpdateConfig = ({
     setCurrentMoveIndex,
     setGameStatus,
     gameId,
-    analysisShapes,
-    analysisBrushes
+    analysisMode
   ]);
 
   return updateConfig;
