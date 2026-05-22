@@ -22,7 +22,43 @@ E4Square is a full-stack chess platform built around live multiplayer, bot play,
 
 React, chess.js, chessground/chessboard UI components, Socket.IO, Express, Firebase Auth, Firebase Admin, better-sqlite3, Stockfish WASM, and Docker.
 
-## Demo
+## Architecture
+
+```mermaid
+flowchart LR
+  player["Player browser<br/>React SPA"]
+  firebase["Firebase Auth<br/>Client SDK and Admin verification"]
+  stockfish["Stockfish WASM workers<br/>Bot play and analysis"]
+
+  subgraph host["Production host"]
+    nginx["Nginx TLS reverse proxy<br/>deploy/nginx/e4square.conf"]
+    app["Node/Express app<br/>server/server.js"]
+    static["React build and Stockfish assets<br/>server/client-build"]
+    realtime["Socket.IO realtime layer<br/>presence, invites, rooms, clocks"]
+    puzzleApi["Puzzle REST API<br/>server/routes/puzzles.js"]
+    puzzleRepo["Puzzle repository<br/>better-sqlite3 read-only access"]
+    puzzleDb[("server/data/puzzles.db")]
+  end
+
+  parquet[("Source puzzle parquet")]
+  importer["Puzzle import pipeline<br/>scripts/import_puzzles.py"]
+
+  player -->|HTTPS pages and REST| nginx
+  player <-->|WebSocket events| nginx
+  nginx --> app
+  app -->|serves| static
+  app --> realtime
+  app --> puzzleApi
+  player -->|sign in| firebase
+  realtime -->|verify ID token| firebase
+  player -->|loads engine assets| static
+  player -->|runs locally| stockfish
+  puzzleApi --> puzzleRepo
+  puzzleRepo --> puzzleDb
+  parquet --> importer
+  importer --> puzzleDb
+```
+
 ## Demo
 
 <table>
